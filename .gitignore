@@ -1,0 +1,4 @@
+# Nothing is built here. Binaries live in GitHub Releases.
+*.tar.gz
+*.zip
+moleculo
