@@ -1,5 +1,72 @@
 # Changelog
 
+## 0.4.0 — 2026-08-10
+
+The page learned to show why a molecule matched, and two counts learned to stop
+lying.
+
+**You can see why a row is a hit**
+
+A structure search now returns each hit with the matched atoms marked, and the
+page draws them marked. No other client of this API can do that, because the
+match is expressed in the notation itself rather than as a list of atom numbers
+that a renderer would have to agree with.
+
+**Click a structure to read it**
+
+The table draws small because it has to fit hundreds of rows. Clicking a drawing
+opens it at readable size, with its identifier, its notation, a copy button, and
+arrows — or the left and right keys — to walk the hits without going back to the
+table.
+
+**An exact-formula count says when it is a floor**
+
+A formula search applies the same wall-clock bound as every other search. When
+that bound stopped it, the response used to report a partial count as final: the
+same 124 M collection answered one query with 378 hits one minute and 377 the
+next, depending on what else the machine was doing. The response now carries how
+many molecules were actually examined, and says the count is a floor.
+
+⚠ It is still a floor. Substructure and SMARTS run in the background and their
+counts converge as you poll; a formula search answers once. On 124 million rows
+it examines about a fifth of the collection in thirty seconds.
+
+**The fingerprint codec is measured, and it is the similarity lever**
+
+`--fp-codec none` is **4.6x the similarity throughput** of the default, for
+about 46% more index — 84 M molecules/second against 385 on ten threads, with
+the fingerprint column going from 2.98 GB to 7.96 at 124 M. The substructure
+scan does not change, because it never reads that column. Compression stays the
+default; the flag is there for a deployment where similarity is the whole job.
+
+**Build numbers, measured rather than projected**
+
+0.3.0 said a parallel 124 M build should take about 3.5 hours. Run: **3 h 58**,
+a 2.69x gain on 10 h 43. The two screening passes go 6.5x; everything else is
+sequential. Ten threads also spend 14% more processor time in total than one and
+peak at 849 MB rather than 186 — the wall clock is what improves.
+
+**Also**
+
+- A mark: the page and its browser tab now have one.
+- A refused query already named the atom in 0.3.0; the page now shows that
+  reason rather than only the reference's wording.
+
+**Known limitations**
+
+- `fmt=sdf` is refused with a `400`; it needs 2D coordinate generation.
+- A formula count over a large collection is a floor, as above.
+- No canonicalisation, so no duplicate detection and no identity across
+  collections.
+- No sharding: one collection is one index directory on one machine.
+- Only three quarters of a build is parallel, and after that the posting merge
+  is the largest single phase; more threads will not touch it.
+- 399 molecules in 2 897 819 read a different aromatic system from RDKit, 80 of
+  them one homologous series.
+- The structure editor draws its own interface and cannot be themed with the
+  page.
+
+
 ## 0.3.0 — 2026-08-10
 
 The engine grew an interface, and the build stopped taking a working day.

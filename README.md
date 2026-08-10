@@ -130,19 +130,19 @@ moleculo index inspect ./indexes/mydb
 |---|---|
 | `--bits N` | similarity fingerprint width: 256, 512 (default), 1024 or 2048. Narrower costs recall, wider costs disk. Fixed at build time — it is a property of the index, not of a query. |
 | `--codec none\|zstd` | compress the molecule and record stores. Default `zstd`. |
-| `--fp-codec`, `--screen-codec` | the same, for the fingerprint column and the screening index. |
+| `--fp-codec`, `--screen-codec` | the same, for the fingerprint column and the screening index. ⚠ `--fp-codec none` is **4.6x the similarity throughput for about 46% more index** — measured, see below. |
 | `--replace` | swap out a shard that is already there. Requires a higher `--generation`. |
 | `--generation N` | index generation. Row identifiers are stable within one generation and only within one. |
 | `--notify URL` | call a running server's reload endpoint once the shard is published. |
 | `--threads N` | workers for the two screening passes, which are three quarters of a large build. Default: the machine's parallelism. Does not change the shard; does raise memory. |
 
 **Plan for the time.** Building is CPU-bound and it is hours rather than minutes
-at scale. Two measured points on **one core** of a laptop:
+at scale. Measured on a ten-core laptop:
 
-| molecules | wall clock | index size | bytes/molecule |
-|---:|---:|---:|---:|
-| 10 M PubChem | 50 minutes | 0.92 GB | 91.6 |
-| 124.4 M PubChem | 10.7 hours | 10.7 GB | 86.4 |
+| molecules | one core | ten cores | index size | bytes/molecule |
+|---:|---:|---:|---:|---:|
+| 10 M PubChem | 50 minutes | — | 0.92 GB | 91.6 |
+| 124.4 M PubChem | 10 h 43 | **3 h 58** | 10.7 GB | 86.4 |
 
 Note which way the density moved. Bigger collections cost *less* per molecule,
 because the screening index compresses better when each feature has more rows in
@@ -151,18 +151,39 @@ whose chemistry is heavier, the same build is 129.5 bytes per molecule — the
 range across the corpora tried here is 86 to 130.
 
 Three quarters of that is the two screening passes, and they run on as many
-workers as `--threads` asks for. Measured on 1 M molecules: 193.6 s on one
-thread, 45.8 s on eight, 44.8 s on ten. The rest of the build is sequential, so
-the whole-build gain flattens out around 4x on this machine and the projection
-for a 124 M build is roughly 3.5 hours rather than 10.7.
+workers as `--threads` asks for. Those two passes go **6.5x faster** on ten
+cores — 8 hours to 74 minutes at 124 M. The whole build gains **2.69x**, because
+reading the input, merging the posting runs and writing the fingerprints are
+sequential and stay so.
+
+Parallel work is not free work: ten threads spend **14% more processor time in
+total** than one, since every worker keeps its own copy of the feature counts.
+The wall clock is what improves.
 
 Two builds of the same input are byte-identical whatever `--threads` says. That
 is a property the test suite asserts rather than a claim: an index is a function
 of its input and the builder version, and a thread count is neither.
 
+**The fingerprint codec is the similarity lever, and it is a build-time choice.**
+Measured on one corpus, one machine and one commit, differing only in
+`--fp-codec`:
+
+| | `zstd` (default) | `none` |
+|---|---:|---:|
+| similarity, ten threads | 84 M molecules/s | **385 M/s** |
+| similarity, one thread | 10 M/s | 53 M/s |
+| substructure scan | unchanged | unchanged |
+| fingerprint column, 2.9 M molecules | 91 MB | 180 MB |
+
+The substructure scan does not move because it never reads that column, which is
+the check that says the rest of the table is real. At 124 M the trade is a
+fingerprint column of 2.98 GB against 7.96, taking the whole index from 86 bytes
+per molecule to 126. **Compression stays the default**; if similarity is what
+your deployment does all day, `--fp-codec none` is the one flag that matters.
+
 **Plan for the memory, and read the number carefully.** The build is out-of-core
-and its own allocation stays small — the 124 M build peaked at 186 MB on one
-thread, and workers cost roughly 50 MB each on top of that. What
+and its own allocation stays small — 186 MB on one thread at 124 M, and 849 MB
+on ten, because each worker holds its own feature counts. What
 `/usr/bin/time -l` reports as maximum resident set is much larger, 3.6 GB on that
 build, because each pass reads the shard back through a memory map and the
 kernel counts those file pages as resident. They are evictable: the build does
@@ -393,6 +414,17 @@ Each row therefore carries a structure with its notation beneath it. Drawings
 are painted as rows come into view, so a page of 250 costs what you actually
 look at, and **settings** turns them off.
 
+**Click a structure to see it properly.** The table draws small because it has
+to fit hundreds of rows; a dialog opens the one you clicked at readable size,
+with its identifier, its notation, a copy button, and arrows — or the left and
+right keys — to walk the hits without going back to the table. Escape closes it.
+
+**And the part that matched is marked on the drawing.** One occurrence per hit,
+not all of them — the engine asks whether a query occurs, which is a cheaper
+question than how many times. The mark travels inside the notation rather than
+as a list of atom numbers, so nothing has to agree with anything else about how
+a molecule is numbered.
+
 ⚠ The editor and the renderer are stored compressed, so a client that does not
 send `Accept-Encoding: gzip` gets a `406` saying so rather than bytes it did not
 ask for. Every browser sends it; `curl` needs `--compressed`.
@@ -513,7 +545,15 @@ collections in the hundreds of millions, self-hosted, as one file.
   loses a hit silently, a looser one returns an extra.
 - **Only three quarters of the build is parallel.** The screening passes use
   every core; reading the input, merging the posting runs and writing the
-  fingerprints do not. On a ten-core machine that puts the ceiling near 4x.
+  fingerprints do not. Measured on ten cores at 124 M: the parallel passes go
+  6.5x, the whole build 2.69x. After that the posting merge is the largest
+  single phase, and more threads will not touch it.
+- **An exact-formula count over a large collection is a floor, not a total.**
+  Substructure and SMARTS searches run in the background and their count
+  converges as you poll; a formula search answers once, so if the wall-clock
+  bound stops it, what you get is what it had. It says so — the response carries
+  how many molecules it examined — but on 124 million rows in thirty seconds
+  that is about a fifth of the collection.
 
 ---
 
