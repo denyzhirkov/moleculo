@@ -4,9 +4,14 @@ Chemical structure search over large molecule collections — substructure,
 SMARTS, similarity and exact formula — served over an HTTP API that is
 wire-compatible with Arthor.
 
-A single static binary. No runtime, no dependencies, no installer, no database
-server. **Bring your own molecules**: nothing is bundled, nothing is uploaded,
-and query structures never leave the process.
+A single static binary with a search page inside it. No runtime, no
+dependencies, no installer, no database server, and **no request to anything but
+this process** — no CDN, no font service, no structure resolver. It runs on a
+network with no route to the internet, which is where confidential chemistry
+usually lives.
+
+**Bring your own molecules**: nothing is bundled, nothing is uploaded, and query
+structures never leave the process.
 
 ---
 
@@ -20,6 +25,8 @@ and query structures never leave the process.
 - [Searching](#searching) — the four query types
 - [Getting results out](#getting-results-out)
 - [Operating it](#operating-it) — adding data, several sources, reloading
+- [The search page](#the-search-page) — draw a query, read the results, keep what matters
+- [What this is measured against](#what-this-is-measured-against) — RDKit, Arthor, and where this loses
 - [Known limitations](#known-limitations)
 - [Security](#security)
 
@@ -127,9 +134,10 @@ moleculo index inspect ./indexes/mydb
 | `--replace` | swap out a shard that is already there. Requires a higher `--generation`. |
 | `--generation N` | index generation. Row identifiers are stable within one generation and only within one. |
 | `--notify URL` | call a running server's reload endpoint once the shard is published. |
+| `--threads N` | workers for the two screening passes, which are three quarters of a large build. Default: the machine's parallelism. Does not change the shard; does raise memory. |
 
-**Plan for the time.** Building is CPU-bound and single-threaded, and it is
-hours rather than minutes at scale. Two measured points on one core of a laptop:
+**Plan for the time.** Building is CPU-bound and it is hours rather than minutes
+at scale. Two measured points on **one core** of a laptop:
 
 | molecules | wall clock | index size | bytes/molecule |
 |---:|---:|---:|---:|
@@ -142,8 +150,19 @@ it, so sizing from a small trial run overestimates rather than under. On ChEMBL,
 whose chemistry is heavier, the same build is 129.5 bytes per molecule — the
 range across the corpora tried here is 86 to 130.
 
+Three quarters of that is the two screening passes, and they run on as many
+workers as `--threads` asks for. Measured on 1 M molecules: 193.6 s on one
+thread, 45.8 s on eight, 44.8 s on ten. The rest of the build is sequential, so
+the whole-build gain flattens out around 4x on this machine and the projection
+for a 124 M build is roughly 3.5 hours rather than 10.7.
+
+Two builds of the same input are byte-identical whatever `--threads` says. That
+is a property the test suite asserts rather than a claim: an index is a function
+of its input and the builder version, and a thread count is neither.
+
 **Plan for the memory, and read the number carefully.** The build is out-of-core
-and its own allocation stays small — the 124 M build peaked at 186 MB. What
+and its own allocation stays small — the 124 M build peaked at 186 MB on one
+thread, and workers cost roughly 50 MB each on top of that. What
 `/usr/bin/time -l` reports as maximum resident set is much larger, 3.6 GB on that
 build, because each pass reads the shard back through a memory map and the
 kernel counts those file pages as resident. They are evictable: the build does
@@ -354,14 +373,135 @@ meanings and no way for a client holding identifiers across the swap to notice.
 
 ---
 
+## The search page
+
+`moleculo serve` puts a page on the port it listens to. Open it and you get the
+whole engine: a query field, the four search types, the collections you have
+mounted, the `qopts` locks, and results.
+
+**Draw, or type.** The `draw` button opens a structure editor. Drawing writes
+into the query field, the field can be read back into the editor, and query
+features drawn in it come out as SMARTS. The field is the source of truth, so
+pasting a SMILES and drawing one end at the same place. The editor loads the
+first time you ask for it and not before.
+
+**Hits are drawn, not just spelled.** A query is usually written with aromatic
+lowercase and a catalogue often stores Kekulé uppercase, so a perfectly correct
+hit can look like nothing you recognise — `c2ccc(c1ccccc1)cc2` and
+`C1=CC=C(C=C1)C2=C(C(=CC=C2)O)O` share a biphenyl that no one sees by reading.
+Each row therefore carries a structure with its notation beneath it. Drawings
+are painted as rows come into view, so a page of 250 costs what you actually
+look at, and **settings** turns them off.
+
+⚠ The editor and the renderer are stored compressed, so a client that does not
+send `Accept-Encoding: gzip` gets a `406` saying so rather than bytes it did not
+ask for. Every browser sends it; `curl` needs `--compressed`.
+
+**Settings**, top right, holds the three preferences that are yours rather than
+the engine's: whether structures are drawn, how many rows a request asks for
+(50, 250 or 1000 — each one is a real query against the collection), and whether
+the page follows the system's light or dark setting or one you pick. All three
+are remembered in your browser.
+
+**The count says what it is.** While a search runs the page shows a running
+total and says so; when a bound stops it, the number sits on a broken line and
+is labelled a floor, with the reason; and a rail shows how much of the
+collection was actually examined. A number without that state attached would be
+a lie in one of three ways, and this page is careful not to tell it.
+
+**A collection.** Star any hit and it is kept in your browser — structure and
+identifier both, so it survives an index rebuild that changes row numbers — and
+exports as TSV. It never leaves your machine; the server is not told.
+
+**Sorting sorts what is loaded.** The page says so, in as many words. Sorting
+250 loaded rows of ten million is not sorting the result, and pretending
+otherwise is how a chemist comes to believe they are looking at the best hits.
+
+The page needs no flag and no separate download. Everything it uses — including
+the editor, all 65 files of it — is inside the binary.
+
+---
+
+## What this is measured against
+
+No tool here is a straw man. Two of them are load-bearing — one decides whether
+this is correct, the other decides whether it is fast enough — and it is worth
+saying plainly what each is for and where this build comes off worse.
+
+### RDKit — the correctness oracle
+
+RDKit reads the corpus and moleculo reads the corpus and the two are diffed
+field by field: formula, atom and bond counts, ring count, aromatic atoms,
+aromatic bonds, and the per-atom ring-bond counts that ring locks compile to.
+**99.984% of 2 897 819 ChEMBL molecules agree on every field.** The rest are
+catalogued, with a reason each, rather than left as a percentage.
+
+That relationship is not a comparison, it is a dependency: where the two differ,
+the default assumption is that this build is wrong. The exceptions are written
+down. A handful of them are places where RDKit's default model declines
+something the Daylight lineage accepts — a furan bridged into a macrocycle, for
+instance — and there this build follows Daylight, because that is the lineage
+the API is compatible with.
+
+RDKit is also the better tool for most jobs that are not this one. It reads and
+writes every format, generates coordinates, computes descriptors, does
+conformers and reactions. This build does four kinds of search and nothing else.
+If your collection fits in a PostgreSQL database, the RDKit cartridge is a more
+complete answer than this is.
+
+### Arthor — the wire-compatibility target and the speed yardstick
+
+The HTTP surface is Arthor's, deliberately, so that clients written against it
+work here unchanged. It is also the engine the performance bar is set by, and
+that bar was measured rather than assumed:
+
+| | Arthor | this build |
+|---|---|---|
+| similarity, resident database | 3 300 M molecules/s at 1.647 B, 256-bit | ~437 M/s, 8 threads, 512-bit |
+| largest database served | 15.18 B molecules | 124.4 M verified end to end |
+| substructure hit count | capped at 20 000 | exhaustive, or an honest floor |
+| index size | not published | 86.4 bytes per molecule |
+
+**Where this build is behind: throughput and scale.** Similarity is about 7.5x
+slower, of which 2x is fingerprint width — 512 bits against their 256 — and the
+rest is cores and memory bandwidth. There is no sharding, so one database is one
+directory on one machine; Arthor serves collections a hundred times larger than
+anything verified here. Building is single-threaded and a 124 M collection is a
+working day on one core.
+
+**Where it is ahead: the count is real.** An Arthor substructure search stops at
+20 000 hits. This one either returns the true count or says, in the response,
+that what it returned is a floor and why. Nothing is truncated and presented as
+final. Hit sets themselves agree where they can be compared — benzene on the
+reference database returns 1973, and 1453 with ring systems locked, which are
+the same two numbers and the same delta of 520.
+
+And it runs on your machine. Queries never leave the process, no collection is
+uploaded anywhere, and there is no service to depend on.
+
+### Others in the same area
+
+Not measured here, and listed so the map is honest rather than flattering.
+**chemfp** is faster than this at Tanimoto and does only similarity — no
+substructure search. **SmallWorld** answers a different question, nearest
+neighbours by graph edit distance, which this cannot do at all. **Open Babel**
+and its `fastsearch` index cover smaller collections with a broader toolbox.
+
+The niche this aims at is narrow: exhaustive substructure and SMARTS search over
+collections in the hundreds of millions, self-hosted, as one file.
+
+---
+
 ## Known limitations
 
 - **`fmt=sdf` is refused with a `400`.** It needs 2D coordinate generation,
   which is not implemented. Use `tsv` and generate coordinates with RDKit.
-- **No graphical interface ships with this.** The API is wire-compatible with
-  Arthor, including the `/config` blob its web UI reads on startup, but that
-  combination has not been tested here. Today the client is a script or a
-  spreadsheet.
+- **The interface is one page and does four things.** Query, results, a local
+  collection you can export, and a structure editor. There is no dashboard, no
+  saved searches and no user accounts, and the API is the supported way to do
+  anything the page does not.
+- **The Arthor web UI has not been tested against this.** `/config` serves the
+  blob it reads on startup, but nobody has pointed it here.
 - **No canonicalisation.** The same compound in two catalogues is two unrelated
   rows; there is no duplicate detection and no identity that spans databases.
 - **No sharding.** One database is one index directory on one machine; several
@@ -371,8 +511,9 @@ meanings and no way for a client holding identifiers across the swap to notice.
   80 of them a single homologous series. They are catalogued rather than
   unknown, and the direction matters more than the count: a stricter reading
   loses a hit silently, a looser one returns an extra.
-- **Building is single-threaded.** 124 M molecules is a working day on one core.
-  The work parallelises and is not memory-bound; it simply has not been done.
+- **Only three quarters of the build is parallel.** The screening passes use
+  every core; reading the input, merging the posting runs and writing the
+  fingerprints do not. On a ten-core machine that puts the ceiling near 4x.
 
 ---
 

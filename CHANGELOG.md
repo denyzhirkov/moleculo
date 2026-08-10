@@ -1,5 +1,79 @@
 # Changelog
 
+## 0.3.0 — 2026-08-10
+
+The engine grew an interface, and the build stopped taking a working day.
+
+**A search page, in the binary**
+
+`moleculo serve` now puts a page on the port it listens to. Query field, the
+four search types, collections, `qopts` locks, results, export. **Every byte of
+it comes from this process** — no CDN, no font service, no depiction service, no
+structure resolver — because the deployment this is built for is a corporate
+network with no route to the internet. A page that fetches a font from a third
+party fails exactly there, and it fails silently: the page renders and the font
+never arrives. There is a test that scans the embedded page for external URLs.
+
+- **Draw a query.** A structure editor opens on demand. Drawing writes into the
+  query field, the field reads back into the editor, and query features drawn in
+  it come out as SMARTS. The field is the source of truth, so typing, pasting
+  and drawing all end at the same string.
+- **Hits are drawn, not just spelled.** A query is usually written aromatic and
+  a catalogue often stores Kekulé, so a correct hit can look like nothing you
+  recognise. Structures are painted as rows come into view.
+- **A collection.** Star a hit and it is kept in your browser — structure and
+  identifier both, so it survives a rebuild that renumbers rows — and exports as
+  TSV. It never reaches the server.
+- **The count says what it is**: still counting, exact, or a floor with the
+  reason and how much of the collection was examined. A number without that
+  state is wrong in one of three ways.
+- **Sorting sorts the loaded rows** and says so. Sorting 250 of ten million is
+  not sorting the result.
+- **Settings**: draw structures or not, rows per request, appearance.
+
+**The build is parallel**
+
+The two screening passes are three quarters of a large build and now run on
+every core. Measured on 1 M PubChem molecules: 193.6 s on one thread, 45.8 s on
+eight, 44.8 s on ten. `--threads` sets it; the machine is asked by default.
+
+**Two builds of the same input remain byte-identical whatever the thread count**,
+which the test suite asserts rather than assumes. Memory scales with workers —
+111 MB at one, 515 MB at eight — so a build-memory figure now names a thread
+count.
+
+**Correctness**
+
+Full-field agreement with RDKit over 2 897 819 ChEMBL molecules: **99.984%**,
+from 99.840% in 0.2.0. The aromatic model now applies Hückel's rule only to atom
+sets that trace a ring — a fused ring system's union frequently is not one — and
+aromatic divergences fell from 4 526 to 399.
+
+Refusals are measured over the whole of PubChem rather than a sample: 42 142 of
+124 469 489 rows (0.034%), every one for a valence no element allows, and RDKit
+refuses all of them too.
+
+**Fixed**
+
+- A refused query now says which atom was wrong, in a `detail` field beside the
+  reference's own wording, instead of only "Invalid SMILES".
+- A truncated search reports how many molecules it actually verified, in
+  `verified`, instead of leaving a client to infer it from silence.
+
+**Known limitations**
+
+- `fmt=sdf` is refused with a `400`; it needs 2D coordinate generation.
+- No canonicalisation, so no duplicate detection and no identity across
+  collections.
+- No sharding: one collection is one index directory on one machine.
+- Only three quarters of a build is parallel; the rest is sequential, which puts
+  the ceiling near 4x on a ten-core machine.
+- 399 molecules in 2 897 819 still read a different aromatic system from RDKit,
+  80 of them one homologous series. Catalogued, not unknown.
+- The structure editor draws its own interface and cannot be themed with the
+  page.
+
+
 ## 0.2.0 — 2026-08-10
 
 The release 0.1.0 said was in progress. Every limitation it declared except two
