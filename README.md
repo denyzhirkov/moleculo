@@ -575,12 +575,12 @@ not Arthor, and the gap at equal scale is the wider one.
 slower with the fingerprint column uncompressed and 39x with the default
 `zstd`**, and the codec is therefore the first thing to change if similarity is
 what a deployment does all day. Of the 8.6x, about 2x is fingerprint width — 512
-bits against their 256 — and the rest is cores and memory bandwidth. There is no
-sharding, so one database is one directory on one machine; Arthor serves
-collections a hundred times larger than anything verified here. Building is
-partly parallel — the two screening passes go 6.5x on ten cores, the whole build
-2.69x — which puts 124 M molecules at **3 h 58 rather than the 10 h 43 one core
-takes**; the posting merge is sequential and is what remains.
+bits against their 256 — and the rest is cores and memory bandwidth. Sharding is
+within one machine, so Arthor still serves collections a hundred times larger
+than anything verified here. Building a single shard is partly parallel — the
+two screening passes go 6.5x on ten cores, the whole build 2.69x — and building
+shards at once goes past that: **8.17x on eight**, which put 50 M molecules at
+26 minutes 44.
 
 **Where it is ahead: the count is real.** An Arthor substructure search stops at
 20 000 hits. This one either returns the true count or says, in the response,
