@@ -24,9 +24,10 @@ structures never leave the process.
 - [Running the server](#running-the-server)
 - [Searching](#searching) — the four query types
 - [Getting results out](#getting-results-out)
-- [Operating it](#operating-it) — adding data, several sources, reloading
+- [Operating it](#operating-it) — adding data, several sources, reloading, a missing shard
 - [The search page](#the-search-page) — draw a query, read the results, keep what matters
 - [What this is measured against](#what-this-is-measured-against) — RDKit, Arthor, and where this loses
+- [Which of these you actually want](#which-of-these-you-actually-want)
 - [Known limitations](#known-limitations)
 - [Security](#security)
 
@@ -104,15 +105,37 @@ A line the parser cannot read is counted and skipped, not fatal — one bad row 
 a hundred million must not fail a build. The build reports how many it skipped
 and shows the first few reasons.
 
-**How correct is the reading?** Every molecule is diffed against RDKit over a
-fixed corpus of 2 897 819 ChEMBL molecules: **99.991% agree on every field**,
-and the remaining divergences are catalogued rather than unknown. Of that
-corpus, 7 molecules are refused where RDKit accepts them.
+**How correct is the reading?** Every molecule is diffed against RDKit, field by
+field, over two corpora from different producers:
+
+| corpus | molecules | agree on every field | refused where RDKit accepts |
+|---|---:|---:|---:|
+| ChEMBL | 2 897 797 | **99.991%** | 7 |
+| ZINC20 | 5 119 973 | **99.9999%** | 14 |
+
+The remaining divergences are catalogued rather than unknown, and on the ZINC
+sample **none of them is ours**: all three aromatic disagreements are cases
+where RDKit's own answer changes with how the molecule is written.
+
+⚠ **Read the two numbers together.** The difference between them is the
+chemistry, not the engine. ZINC is enumerated combinatorial space assembled from
+validated building blocks; ChEMBL is forty years of medicinal chemistry
+literature, with the metal complexes and drawing conventions that come with it.
+Which figure your collection resembles depends on where your molecules came
+from.
 
 Refusals are the other direction of the same question, and they are measured on
 the whole of PubChem rather than a sample: of 124 469 489 rows, 42 142 are
 refused (0.034%), every one of them for a valence no element allows —
 `FBr(F)F`, `O=Cl(=O)(=O)F` — and RDKit refuses them too.
+
+The ZINC sample turned up fourteen refusals RDKit does *not* share, and they are
+worth knowing about because the disagreement runs the other way. Each carries a
+**triple bond between two aromatic atoms inside the ring** — `c1sc#cc1I`. A
+triple bond is linear, so no five-membered ring can hold one, and a ring that
+holds one cannot be planar or aromatic. RDKit reports it as five aromatic atoms
+with a triple bond among them; this build says it cannot kekulize the ring,
+which is precisely what is wrong with it.
 
 ---
 
@@ -124,6 +147,14 @@ version, safe to delete and rebuild, and never edited in place.
 ```sh
 moleculo index build molecules.smi ./indexes/mydb
 moleculo index inspect ./indexes/mydb
+```
+
+Above a few tens of millions of molecules, build it as shards — they are built
+concurrently and searched as one database:
+
+```sh
+moleculo index build big.smi ./indexes/big --shards 8 --generation 1
+moleculo index inspect ./indexes/big/shard-0000
 ```
 
 | option | meaning |
@@ -236,9 +267,12 @@ the name is how the API identifies a collection.
 
 An index that is missing, corrupt, or of an unknown format version takes **only
 that database** out of service. The rest keep serving, and the reason is logged
-by name.
+by name. A database made of several shards goes further: losing one shard leaves
+the others serving, with every affected search saying so — see
+[when a shard is missing](#when-a-shard-is-missing).
 
-The server listens on loopback only.
+The server listens on loopback only, and there is no authentication of any kind.
+Read [Security](#security) before exposing it to anyone but yourself.
 
 ### Search limits
 
@@ -536,8 +570,12 @@ saying plainly what each is for and where this build comes off worse.
 RDKit reads the corpus and moleculo reads the corpus and the two are diffed
 field by field: formula, atom and bond counts, ring count, aromatic atoms,
 aromatic bonds, and the per-atom ring-bond counts that ring locks compile to.
-**99.991% of 2 897 819 ChEMBL molecules agree on every field.** The rest are
-catalogued, with a reason each, rather than left as a percentage.
+**99.991% of 2 897 797 ChEMBL molecules agree on every field, and 99.9999% of
+5 119 973 from ZINC20** — two producers, different chemistry. The rest are
+catalogued, with a reason each, rather than left as a percentage. On the ZINC
+sample the catalogue is empty of anything this build owns: every aromatic
+disagreement there is one where RDKit's answer depends on how the molecule was
+written.
 
 That relationship is not a comparison, it is a dependency: where the two differ,
 the default assumption is that this build is wrong. The exceptions are written
@@ -555,11 +593,26 @@ complete answer than this is.
 
 ### Arthor — the wire-compatibility target and the speed yardstick
 
-The HTTP surface is Arthor's, deliberately, so that clients written against it
-work here unchanged. It is also the engine the performance bar is set by, and
-that bar was measured rather than assumed:
+**Why this API and not one of our own.** Not because anything is wrong with
+Arthor — it is a current product, version 4.3.4 as of May 2026. Because its HTTP
+surface is already wired into other people's tools and scripts, and that wiring
+is worth more than any interface this project could design. A client written
+against Arthor works here unchanged. Compatibility is not deference and it is
+not a bid to replace anything; it is one concrete property — you do not have to
+rewrite what already works.
 
-| | Arthor | this build |
+⚠ **Everything measured below comes from the public demo instance at
+`arthor.docking.org`, which serves 4.2.4 against the product's current 4.3.4.**
+That is a demonstration deployment a minor version behind, not the shipping
+engine, and the numbers should be read that way. It also explains two things
+found while building against it: the swagger it publishes does not describe what
+it does, and its answers have drifted from what the same queries returned in an
+earlier session. Neither is evidence about Arthor as a product.
+
+It is also the engine the performance bar is set by, and that bar was measured
+rather than assumed:
+
+| | Arthor demo (4.2.4) | this build |
 |---|---|---|
 | similarity, resident database | 3 300 M molecules/s at 1.647 B, 256-bit | 84 M/s default, **385 M/s** with `--fp-codec none` — ten threads, 512-bit, 2.9 M |
 | largest database served | 15.18 B molecules | 124.4 M verified end to end |
@@ -589,6 +642,28 @@ final. Hit sets themselves agree where they can be compared — benzene on the
 reference database returns 1973, and 1453 with ring systems locked, which are
 the same two numbers and the same delta of 520.
 
+**Three more things measured on that demo instance, offered as calibration
+rather than as points scored.** Their engine is faster and serves collections
+this one has not attempted; none of that is in question. But a public demo under
+load is not a specification, and it behaves like one:
+
+- **Concurrency costs more than the work does.** Three simultaneous searches,
+  none of them expensive, produced two waits of **10.7 seconds against 6 and 19
+  milliseconds of actual search**. Their contract exposes this honestly —
+  `requestTime` includes queue time and `time` does not — and this build now
+  reports the same split, because it is genuinely useful.
+- **The demo instance has drifted from its own recorded behaviour.** A query
+  verified at 135 hits against 135 in an earlier session now answers
+  `recordsFiltered` 0 while returning five rows.
+- **The specification that instance publishes is incomplete.** The compatibility
+  contract behind this build was rebuilt from live probing and their own web
+  bundle, because the swagger the demo serves does not describe what it does.
+  The prepared-query echo is an undocumented private SMARTS dialect.
+
+Where they are unambiguously better than the reference oracle: on a furan
+bridged into a macrocycle, **Arthor gives the same answer every time and RDKit
+does not.** That stability is why this build follows Arthor there.
+
 And it runs on your machine. Queries never leave the process, no collection is
 uploaded anywhere, and there is no service to depend on.
 
@@ -600,8 +675,26 @@ substructure search. **SmallWorld** answers a different question, nearest
 neighbours by graph edit distance, which this cannot do at all. **Open Babel**
 and its `fastsearch` index cover smaller collections with a broader toolbox.
 
-The niche this aims at is narrow: exhaustive substructure and SMARTS search over
-collections in the hundreds of millions, self-hosted, as one file.
+### Which of these you actually want
+
+No ranking is offered, because the honest answer differs by axis and a project
+that ranks itself has chosen the axis. What follows is the question each tool
+answers best.
+
+| if the job is | use |
+|---|---|
+| similarity, as fast as it can be done | **chemfp** |
+| reading, writing, descriptors, conformers, coordinates — chemistry generally | **RDKit** |
+| nearest neighbours by graph edit distance | **SmallWorld** |
+| billions of molecules, as a service someone else operates | **Arthor** |
+| exhaustive substructure and SMARTS over hundreds of millions, self-hosted, where the count has to be trustworthy | **this** |
+
+That last row is the narrow thing this is first at, and it is worth stating
+plainly rather than leaving implied: a count here is either exact or labelled a
+floor with the reason attached. It is one binary, it holds your collection on
+your disk, and nothing it does reaches the network.
+
+Everything else on the list does something this does not.
 
 ---
 
@@ -621,7 +714,8 @@ collections in the hundreds of millions, self-hosted, as one file.
   built as many shards and is searched across all of them, but every shard has
   to be on the box serving it. Several databases can still be searched in one
   request.
-- **211 molecules in 2 897 819 read a different aromatic system from RDKit**,
+- **211 molecules in 2 897 797 of ChEMBL read a different aromatic system from
+  RDKit** — three in 5 119 973 of ZINC20, where none of them is ours —
   and the composition matters more than the number. **202 of them are cases
   where RDKit's own answer is not a function of the molecule**: on a furan or
   thiophene bridged so that its oxygen also lies on a ring of nine atoms or
