@@ -1,5 +1,98 @@
 # Changelog
 
+## 0.5.0 — 2026-08-11
+
+A database can be more than one shard, the aromatic reading got substantially
+closer to the reference, and searches queue instead of trampling each other.
+
+⚠ **Aromaticity changed, so hit sets changed.** 188 molecules of the ChEMBL
+corpus read differently than they did in 0.4.0, and the half that matters most
+is where this build used to see *less* aromaticity than RDKit — it lost hits a
+chemist was looking for. Indexes built by earlier versions still open and still
+work; but for identical answers, rebuild.
+
+**A database can be split into shards, and built eight at a time**
+
+`--shards N` cuts an input into N shards and builds them concurrently. Shards
+are independent, so this has none of the sequential tail one build has: 50 M
+PubChem as eight shards took **26 minutes 44 against 3 h 38 of processor time —
+8.17x**. Searches fan out across shards and merge; hit sets are identical to
+searching the same molecules as one shard, which is asserted over the query
+corpus rather than assumed.
+
+⚠ Budget **3.94 GB** of memory for eight concurrent builds, not the 1.7 GB a
+single build's 211 MB would suggest. Each shard build runs its own screening
+threads, so the two kinds of parallelism multiply. Turn `--threads` down as well
+as `--build-workers` on a smaller machine.
+
+A directory holding an index the old way is still a database and still opens.
+
+**A missing shard makes a database incomplete, not unavailable**
+
+If a shard's directory is gone, the rest still serve. `/dt/data` drops the
+missing part from `partCnt`, and **every search over that database carries a
+warning naming the shard**. Read it: `recordsTotal` falls *with* the missing
+shard, so a degraded answer is internally consistent and looks complete. The
+warning is the only thing distinguishing it. A database whose every shard is
+gone is refused rather than served as an empty one.
+
+**You can see how much of a database is in memory**
+
+`GET /dt/{db}/data` now reports real page residency per shard and per index —
+`incore`, `total`, and a coarse chart — which is what decides whether a query
+takes seconds or minutes. Per shard rather than averaged, because a database is
+warm or cold in parts and one figure hides the shard that is paging.
+
+**Searches queue rather than fighting**
+
+A wall-clock bound limits one search; it never limited a caller issuing them
+faster than they finish, which turned one deadline into a queue of deadlines
+where everything times out. Searches now wait behind a bounded pool — one per
+core by default — and the wait is charged against the search's own deadline, so
+one that queued away its thirty seconds is refused rather than admitted to do
+token work. Past the queue depth, a search is refused on arrival.
+
+`time` in a response is now the work and `requestTime` the work plus the wait;
+they used to be the same number, reporting a queue wait of zero forever. This is
+the split Arthor's own contract defines, and measuring their instance showed
+10.7 seconds of queueing against 20 milliseconds of work.
+
+New: `--max-concurrent-searches`, `--max-queued-searches`.
+
+**An exact-formula count converges, and 0.4.0's warning about it is withdrawn**
+
+0.4.0 said a formula count was still a floor because a formula search answers
+once. It no longer answers once — it is a job like substructure, publishes as it
+goes, and converges across polls. On 124 M it is exhaustive in 16 seconds where
+0.4.0 answered `C9H8O4` with 463 and called it final. It is 1246.
+
+**The aromatic reading, and an admission about the reference**
+
+Divergence from RDKit on the ChEMBL corpus went from **399 molecules to 211**,
+and full-field agreement from 99.984% to **99.991%**. Four changes did it: the
+reference's own fused-ring algorithm replaced four home-grown rules; benzenoid
+polycyclics may enclose their own interior carbons; an atom now lends the ring
+only what its bonds have left it; and a guard requiring a π bond somewhere was
+retired after the reason it existed had been covered elsewhere for two releases.
+
+⚠ **202 of the 211 that remain are cases where RDKit disagrees with itself.** On
+a furan or thiophene bridged so its oxygen also sits on a ring of nine atoms or
+more, its answer depends on which ring its walk reaches first: the same molecule
+read 5 aromatic atoms on 128 of 300 random writings of itself, and 0 on the
+other 172. Arthor is stable there and agrees with this build. **The residue that
+is genuinely ours is nine molecules.**
+
+**What has not changed**
+
+No authentication, no per-client rate limiting, no notion of a user. Anyone who
+can reach the port can search — and a SMARTS of `[*]` with `fmt=tsv` exports the
+whole collection. The port is the security boundary and there is nothing behind
+it. It listens on loopback by default; keep it there or put it behind something
+that authenticates.
+
+Still no canonicalisation, so the same compound from two catalogues is two
+unrelated rows. Still no `fmt=sdf`. Sharding is within one machine.
+
 ## 0.4.0 — 2026-08-10
 
 The page learned to show why a molecule matched, and two counts learned to stop

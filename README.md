@@ -105,7 +105,7 @@ a hundred million must not fail a build. The build reports how many it skipped
 and shows the first few reasons.
 
 **How correct is the reading?** Every molecule is diffed against RDKit over a
-fixed corpus of 2 897 819 ChEMBL molecules: **99.984% agree on every field**,
+fixed corpus of 2 897 819 ChEMBL molecules: **99.991% agree on every field**,
 and the remaining divergences are catalogued rather than unknown. Of that
 corpus, 7 molecules are refused where RDKit accepts them.
 
@@ -135,6 +135,8 @@ moleculo index inspect ./indexes/mydb
 | `--generation N` | index generation. Row identifiers are stable within one generation and only within one. |
 | `--notify URL` | call a running server's reload endpoint once the shard is published. |
 | `--threads N` | workers for the two screening passes, which are three quarters of a large build. Default: the machine's parallelism. Does not change the shard; does raise memory. |
+| `--shards N` | split the input into N shards and build them at once. This is the parallelism that matters at scale — see below. |
+| `--build-workers N` | how many shard builds run concurrently. Default: the machine's parallelism. ⚠ A safety bound, not a speed knob: memory is per-build and multiplies. |
 
 **Plan for the time.** Building is CPU-bound and it is hours rather than minutes
 at scale. Measured on a ten-core laptop:
@@ -158,6 +160,31 @@ sequential and stay so.
 
 Parallel work is not free work: ten threads spend **14% more processor time in
 total** than one, since every worker keeps its own copy of the feature counts.
+
+**Shards are the parallelism that gets past that.** Shards are independent by
+construction, so building them at once has none of the sequential tail one build
+has. Measured on the same laptop, 50 M PubChem as eight shards:
+
+| | |
+|---|---|
+| wall clock | **26 min 44** |
+| processor time | 3 h 38 |
+| speed-up | **8.17x** |
+| peak memory | **3.94 GB** |
+| index | 3.9 GB, 83.2 bytes/molecule |
+
+⚠ **Budget the memory from that figure, not from one build's.** A single build
+peaks around 211 MB, and eight of those is not 1.7 GB: each shard build runs its
+own screening threads, so the two kinds of parallelism multiply. If the machine
+is smaller, turn `--threads` down as well as `--build-workers`.
+
+```sh
+moleculo index build big.smi /data/big --shards 8 --build-workers 8 --generation 1
+```
+
+The input is divided by byte range rather than copied, so a 50 GB input does not
+need 50 GB of scratch to be split. A shard that fails does not abandon the
+others: the database serves what sealed and reports the rest as missing.
 The wall clock is what improves.
 
 Two builds of the same input are byte-identical whatever `--threads` says. That
@@ -224,7 +251,17 @@ as final. Nothing is silently truncated and called complete.
 |---|---|
 | `--max-seconds N` | wall clock per search. `0` removes it. |
 | `--max-candidates N` | molecules per search. `0` removes it. Time is the bound that protects a server; a molecule count bounds work whose duration depends on the corpus. |
-| `--no-search-limit` | removes both. For offline work, not for a server anyone else can reach. |
+| `--max-concurrent-searches N` | searches running at once. Default one per core, since a scan already claims every core. |
+| `--max-queued-searches N` | arrivals that may wait for a slot. Default matches the pool. |
+| `--no-search-limit` | removes all of them. For offline work, not for a server anyone else can reach. |
+
+**Searches queue rather than being refused for arriving together.** Past the
+pool, a search waits for a slot, and the wait is charged against its own
+deadline — one that queued away its thirty seconds is refused rather than
+admitted to do a token amount of work and report a truncated count. `time` in
+the response is the work; `requestTime` is the work plus the wait, so a client
+can tell a busy server from a slow query. Past the queue depth a search is
+refused on arrival, because waiting only to be refused helps nobody.
 
 **Similarity is refused rather than truncated.** A partial substructure count is
 honestly a floor and the hits in it are real; a partial similarity is not a
@@ -392,6 +429,40 @@ A higher generation is required, not optional. Row identifiers are stable only
 within one generation, so reusing the number would leave one identifier with two
 meanings and no way for a client holding identifiers across the swap to notice.
 
+### When a shard is missing
+
+A sharded database whose shard directory has gone — a disk that failed, a copy
+that did not finish — **still serves the rest**, and says what it lost. The
+server logs it at startup, `/dt/data` drops the missing part from `partCnt`, and
+**every search over that database carries a warning naming the shard**:
+
+```json
+"warning": "mydb: incomplete: 1 of 8 shards unavailable — shard 3 (missing);
+            counts and hits cover only the rest"
+```
+
+Read that warning. `recordsTotal` falls *with* the missing shard, so a degraded
+answer is internally consistent and looks complete — the warning is the only
+thing that tells you the collection searched is not the collection you asked
+about. A database whose every shard is gone is refused outright rather than
+served as an empty one.
+
+### How much of a database is in memory
+
+`GET /dt/{database}/data` reports page residency per shard and per index, which
+is what decides whether a query takes seconds or minutes:
+
+```json
+"memInfo": [{"index": {"type": "SUB", "partNum": 1, "partCnt": 8},
+             "nodes": [{"incore": 10682, "total": 16366,
+                        "aprx": true, "chart": "#######..."}]}]
+```
+
+Per shard rather than averaged, because a database is warm or cold in parts and
+one figure would hide the single shard that is paging. `aprx` is always true and
+honestly so: it is a snapshot of a page cache every process on the machine is
+competing for.
+
 ---
 
 ## The search page
@@ -465,15 +536,16 @@ saying plainly what each is for and where this build comes off worse.
 RDKit reads the corpus and moleculo reads the corpus and the two are diffed
 field by field: formula, atom and bond counts, ring count, aromatic atoms,
 aromatic bonds, and the per-atom ring-bond counts that ring locks compile to.
-**99.984% of 2 897 819 ChEMBL molecules agree on every field.** The rest are
+**99.991% of 2 897 819 ChEMBL molecules agree on every field.** The rest are
 catalogued, with a reason each, rather than left as a percentage.
 
 That relationship is not a comparison, it is a dependency: where the two differ,
 the default assumption is that this build is wrong. The exceptions are written
-down. A handful of them are places where RDKit's default model declines
-something the Daylight lineage accepts — a furan bridged into a macrocycle, for
-instance — and there this build follows Daylight, because that is the lineage
-the API is compatible with.
+down, and the largest of them is not a disagreement at all. On a furan bridged
+into a macrocycle, **RDKit's answer depends on the order it happens to walk the
+rings** — the same molecule, written two ways, gets two answers from the same
+build. That is 202 of the 211 remaining divergences. Arthor is stable there, and
+this build follows it.
 
 RDKit is also the better tool for most jobs that are not this one. It reads and
 writes every format, generates coordinates, computes descriptors, does
@@ -545,24 +617,30 @@ collections in the hundreds of millions, self-hosted, as one file.
   blob it reads on startup, but nobody has pointed it here.
 - **No canonicalisation.** The same compound in two catalogues is two unrelated
   rows; there is no duplicate detection and no identity that spans databases.
-- **No sharding.** One database is one index directory on one machine; several
-  databases can be searched in one request, but a single database cannot be
-  split across machines.
-- **399 molecules in 2 897 819 read a different aromatic system from RDKit**,
-  80 of them a single homologous series. They are catalogued rather than
-  unknown, and the direction matters more than the count: a stricter reading
-  loses a hit silently, a looser one returns an extra.
-- **Only three quarters of the build is parallel.** The screening passes use
-  every core; reading the input, merging the posting runs and writing the
-  fingerprints do not. Measured on ten cores at 124 M: the parallel passes go
-  6.5x, the whole build 2.69x. After that the posting merge is the largest
-  single phase, and more threads will not touch it.
-- **An exact-formula count over a large collection is a floor, not a total.**
-  Substructure and SMARTS searches run in the background and their count
-  converges as you poll; a formula search answers once, so if the wall-clock
-  bound stops it, what you get is what it had. It says so — the response carries
-  how many molecules it examined — but on 124 million rows in thirty seconds
-  that is about a fifth of the collection.
+- **Sharding is within one machine, not across machines.** A database may be
+  built as many shards and is searched across all of them, but every shard has
+  to be on the box serving it. Several databases can still be searched in one
+  request.
+- **211 molecules in 2 897 819 read a different aromatic system from RDKit**,
+  and the composition matters more than the number. **202 of them are cases
+  where RDKit's own answer is not a function of the molecule**: on a furan or
+  thiophene bridged so that its oxygen also lies on a ring of nine atoms or
+  more, its answer depends on which ring its walk reaches first, and the same
+  graph read 5 aromatic atoms on 128 of 300 random writings of itself and 0 on
+  the other 172. Arthor is stable there and agrees with this build. The residue
+  that is genuinely ours is **nine molecules** — two aromatic-boron rings, two
+  fullerene adducts at one atom each, five one-offs.
+- **Only three quarters of a *single shard's* build is parallel.** The screening
+  passes use every core; reading the input, merging the posting runs and writing
+  the fingerprints do not. Measured on ten cores at 124 M: the parallel passes
+  go 6.5x, one whole build 2.69x. Building several shards at once is what gets
+  past that — 8.17x on eight — and it is the reason `--shards` exists. ⚠ The two
+  multiply for memory: eight concurrent builds measured **3.94 GB** peak, not
+  the 1.7 GB a per-build figure predicts, because each shard build runs its own
+  screening threads.
+- **No canonical identity across a rebuild of different data.** Row ids are
+  stable for an index generation; a rebuild that reuses them for different
+  molecules must bump the generation, and nothing checks that for you.
 
 ---
 
@@ -574,10 +652,19 @@ collections in the hundreds of millions, self-hosted, as one file.
   and reports nothing to anyone.
 - A malformed SMILES or SMARTS is a `400`, never a crash.
 - Every search is bounded by wall clock, 30 seconds by default, and a search
-  that hits the bound reports a partial count as partial. **There is still no
-  admission control and no rate limiting**: a caller can keep every core busy by
-  issuing searches faster than they complete. It listens on loopback by default;
-  keep it there, or put it behind something that authenticates and rate limits.
+  that hits the bound reports a partial count as partial. Searches also queue
+  behind a bounded pool, so a caller issuing them faster than they complete gets
+  a `503` rather than turning one deadline into a queue of deadlines.
+- ⚠ **There is no authentication, and no per-client rate limiting.** The pool
+  bounds the server's own workload; it does not bound *who* may send work. There
+  is no notion of a user, a key or an allowed address anywhere in this build.
+- ⚠ **Anyone who can reach the port can export the whole collection.** A SMARTS
+  of `[*]` with `fmt=tsv` matches every molecule and streams it. That is not a
+  defect in the search — it is what a search engine does — but it means the port
+  is the security boundary, and there is nothing behind it.
+- It listens on loopback by default. **Keep it there**, or put it behind
+  something that authenticates and rate limits. That is the supported way to
+  expose this to more than one trusted user, and it is not optional advice.
 
 ---
 
