@@ -157,6 +157,10 @@ moleculo index build big.smi ./indexes/big --shards 8 --generation 1
 moleculo index inspect ./indexes/big/shard-0000
 ```
 
+Past a few hundred million, the shard count matters more than that and eight is
+the wrong answer — see [choosing the shard
+count](#choosing-the-shard-count-and-why-eight-is-not-always-the-answer).
+
 | option | meaning |
 |---|---|
 | `--bits N` | similarity fingerprint width: 256, 512 (default), 1024 or 2048. Narrower costs recall, wider costs disk. Fixed at build time — it is a property of the index, not of a query. |
@@ -166,8 +170,8 @@ moleculo index inspect ./indexes/big/shard-0000
 | `--generation N` | index generation. Row identifiers are stable within one generation and only within one. |
 | `--notify URL` | call a running server's reload endpoint once the shard is published. |
 | `--threads N` | workers for the two screening passes, which are three quarters of a large build. Default: the machine's parallelism. Does not change the shard; does raise memory. |
-| `--shards N` | split the input into N shards and build them at once. This is the parallelism that matters at scale — see below. |
-| `--build-workers N` | how many shard builds run concurrently. Default: the machine's parallelism. ⚠ A safety bound, not a speed knob: memory is per-build and multiplies. |
+| `--shards N` | split the input into N shards. **Size the shard, not the machine** — see below. |
+| `--build-workers N` | how many shard builds run concurrently. Default: the machine's parallelism. ⚠ **Lower this on slow or networked storage**; it is a bound on concurrent I/O as much as on memory. |
 
 **Plan for the time.** Building is CPU-bound and it is hours rather than minutes
 at scale. Measured on a ten-core laptop:
@@ -209,8 +213,42 @@ peaks around 211 MB, and eight of those is not 1.7 GB: each shard build runs its
 own screening threads, so the two kinds of parallelism multiply. If the machine
 is smaller, turn `--threads` down as well as `--build-workers`.
 
+### Choosing the shard count, and why eight is not always the answer
+
+**Size the shard, not the machine.** A shard's postings are spilled to sorted
+runs and then merged, and the merge reads every run at once — so the number of
+open streams during a build is *runs per shard × concurrent builds*. Runs scale
+with shard size, at roughly one 64 MB run per 570 000 molecules:
+
+| molecules per shard | runs | 8 builds at once | 3 builds at once |
+|---:|---:|---:|---:|
+| 6 M | ~11 | 88 streams | 33 |
+| 15 M | ~26 | 210 | **79** |
+| 60 M | ~106 | **845** | 317 |
+| 240 M | ~420 | 3 400 | 1 260 |
+
+On storage that handles concurrent random reads well, the high numbers are fine.
+On anything else they are not, and the failure does not look like a failure:
+**the build keeps running, writes files, and reports nothing wrong.**
+
+⚠ **The diagnostic is the pair of numbers, not either alone.** If the processor
+is mostly idle *and* the disk is delivering single-digit MB/s, the merge is
+thrashing — the same enclosure that reads at 663 MB/s sequentially was measured
+at **4 MB/s** with 845 streams open, and a build projected at 17 hours was on
+course for 50. Reducing the shard size and the concurrency fixed it; nothing
+else had to change.
+
+A reasonable default for a large collection on ordinary storage:
+
 ```sh
-moleculo index build big.smi /data/big --shards 8 --build-workers 8 --generation 1
+# ~15 M molecules per shard, three builds at a time
+moleculo index build big.smi /data/big --shards 128 --build-workers 3 --generation 1
+```
+
+And for a few tens of millions, where the merge is short either way:
+
+```sh
+moleculo index build mid.smi /data/mid --shards 8 --build-workers 8 --generation 1
 ```
 
 The input is divided by byte range rather than copied, so a 50 GB input does not
