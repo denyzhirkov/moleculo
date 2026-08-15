@@ -110,7 +110,7 @@ field, over two corpora from different producers:
 
 | corpus | molecules | agree on every field | refused where RDKit accepts |
 |---|---:|---:|---:|
-| ChEMBL | 2 897 797 | **99.991%** | 7 |
+| ChEMBL | 2 897 799 | **99.991%** | 5 |
 | ZINC20 | 5 119 973 | **99.9999%** | 14 |
 
 The remaining divergences are catalogued rather than unknown, and on the ZINC
@@ -136,6 +136,14 @@ triple bond is linear, so no five-membered ring can hold one, and a ring that
 holds one cannot be planar or aromatic. RDKit reports it as five aromatic atoms
 with a triple bond among them; this build says it cannot kekulize the ring,
 which is precisely what is wrong with it.
+
+ChEMBL's five are small enough to name, and four of them are one thing: an
+**aromatic ring containing boron** — `Cc1b[n+](…)cc(C)c1` and three others.
+Boron in an aromatic ring is a documented divergence rather than an oversight;
+the fifth is a `[c-][n+]` ylide. ⚠ Two acridinium-type `[nH+]` rings and a zinc
+complex used to be in this list and are not any more — the acridiniums because
+0.6.0 refuses them *and so does RDKit*, which moves them out of the disagreement
+rather than fixing them.
 
 ---
 
@@ -404,6 +412,44 @@ Exact molecular formula, hydrogens included, order-independent: `C9H8O4` and
 `O4C9H8` are the same query. The match is exact — `C9H9O4` finds nothing that
 `C9H8O4` finds.
 
+### When nothing matches, the answer says why
+
+New in 0.6.0, and as far as we can tell nobody else does it: a structural search
+that finds **nothing** comes back with an `explain` object instead of a bare
+zero.
+
+```json
+"explain": {
+  "summary": "no molecule in this database contains 1 of the fragments this query requires",
+  "absentFeatures": ["Pu"],
+  "activeLocks": [],
+  "decisive": true
+}
+```
+
+Two things it tells you, and both are things you cannot otherwise find out
+without redrawing the query several ways:
+
+- **which fragment of the query the collection simply does not hold** — often
+  the whole answer;
+- **which `qopts` locks were in force.** ⚠ This is the commonest invisible cause
+  of a surprising empty result: `R` stops benzene matching naphthalene and `C`
+  stops hexane matching cyclohexane, and a caller who left one on has no way to
+  see that from a zero.
+
+⚠ `"decisive": false` means the database was built before 0.6.0. Older shards
+open and search exactly as before, but they did not record which fragments are
+merely *common*, so "absent from the index" and "in almost every molecule" look
+alike to them. **`absentFeatures` is then empty and the summary says why** — a
+field named for absence does not get to carry a guess. Rebuilding that database
+is what makes the answer decisive; nothing else about it is affected, and the
+locks are reported either way because they are a fact about the query rather
+than about the collection.
+
+⚠ It costs an index lookup, not a second search — and a search that **found**
+something never computes it at all. The field is absent from every other
+response, so a client written against Arthor's shape never meets it.
+
 ---
 
 ## Getting results out
@@ -519,6 +565,34 @@ thing that tells you the collection searched is not the collection you asked
 about. A database whose every shard is gone is refused outright rather than
 served as an empty one.
 
+### Watching it from the outside
+
+New in 0.6.0. Operator events go to **stderr** as structured lines, so stdout
+stays pipeable:
+
+```
+WARN moleculo_server::routes: refusing a search on arrival: the pool is full
+     databases=mydb refusal=every search slot is busy…
+WARN moleculo_engine::catalog: database is serving degraded
+     databases=mydb warning=incomplete: 1 of 8 shards unavailable — shard 3
+```
+
+`RUST_LOG` takes the usual filter grammar — `RUST_LOG=moleculo_engine=debug` for
+one component, `RUST_LOG=error` to quieten it. The default is `info`, which is
+every operator message and none of the noise.
+
+⚠ **Query structures never appear in a log, at any level.** They are treated as
+confidential intellectual property and a log file is the easiest place to leak
+one; nothing logs a request, and the databases involved are named where the load
+matters. That is checked rather than intended — a run driving searches against a
+full pool was grepped for the query that produced them, and it appears zero
+times.
+
+⚠ Events fire **once per state, not once per request**. A degraded database
+warns when it mounts, not on every search it answers; per-request detail is
+there at `debug` if you want it. A warning per query on a large collection is
+not a signal, it is a flood that hides the ones that fire once.
+
 ### How much of a database is in memory
 
 `GET /dt/{database}/data` reports page residency per shard and per index, which
@@ -561,6 +635,15 @@ look at, and **settings** turns them off.
 to fit hundreds of rows; a dialog opens the one you clicked at readable size,
 with its identifier, its notation, a copy button, and arrows — or the left and
 right keys — to walk the hits without going back to the table. Escape closes it.
+
+⚠ **Stereochemistry in that drawing was wrong before 0.6.0**, and it was wrong
+in a way nothing noticed for the life of the code: the mark travels inside a
+notation this build writes, and the writer was reordering an atom's neighbours
+without flipping the descriptor that is a parity over that order. The result was
+**the other enantiomer** — same atoms, same bonds, same formula, same hit set,
+so every test about constitution passed on both sides of it. Round-trip fidelity
+on ChEMBL went from **73.82% to 99.990%**. Hit sets never depended on it, so no
+index needs rebuilding for this; only what you were shown does.
 
 **And the part that matched is marked on the drawing.** One occurrence per hit,
 not all of them — the engine asks whether a query occurs, which is a cheaper
@@ -608,7 +691,7 @@ saying plainly what each is for and where this build comes off worse.
 RDKit reads the corpus and moleculo reads the corpus and the two are diffed
 field by field: formula, atom and bond counts, ring count, aromatic atoms,
 aromatic bonds, and the per-atom ring-bond counts that ring locks compile to.
-**99.991% of 2 897 797 ChEMBL molecules agree on every field, and 99.9999% of
+**99.991% of 2 897 799 ChEMBL molecules agree on every field, and 99.9999% of
 5 119 973 from ZINC20** — two producers, different chemistry. The rest are
 catalogued, with a reason each, rather than left as a percentage. On the ZINC
 sample the catalogue is empty of anything this build owns: every aromatic
@@ -746,13 +829,24 @@ Everything else on the list does something this does not.
   anything the page does not.
 - **The Arthor web UI has not been tested against this.** `/config` serves the
   blob it reads on startup, but nobody has pointed it here.
-- **No canonicalisation.** The same compound in two catalogues is two unrelated
-  rows; there is no duplicate detection and no identity that spans databases.
+- **No duplicate detection, though the machinery for it now exists.** The same
+  compound in two catalogues is still two unrelated rows: nothing computes an
+  identity while indexing, no slice stores one, and no endpoint answers "do you
+  already have this". What changed in 0.6.0 is underneath — there is now a
+  canonical form, a 128-bit key over it, and `RDKit`'s standardisation chain
+  ported and diffed against it. ⚠ **It is deliberately not wired up**, because
+  measuring it over ChEMBL showed that a key alone cannot authorise dropping a
+  row: 4.12% of records merge, and 99.88% of that merging happens through the
+  "largest fragment is the compound" rule, which cannot tell a counter-ion from
+  a second active ingredient. Twenty-four ionic liquids file under their shared
+  anion; twenty-five combination antibiotics file under the bigger drug. Dedup
+  needs a second signal, and shipping it without one would silently delete
+  distinct substances.
 - **Sharding is within one machine, not across machines.** A database may be
   built as many shards and is searched across all of them, but every shard has
   to be on the box serving it. Several databases can still be searched in one
   request.
-- **211 molecules in 2 897 797 of ChEMBL read a different aromatic system from
+- **211 molecules in 2 897 799 of ChEMBL read a different aromatic system from
   RDKit** — three in 5 119 973 of ZINC20, where none of them is ours —
   and the composition matters more than the number. **202 of them are cases
   where RDKit's own answer is not a function of the molecule**: on a furan or

@@ -1,5 +1,106 @@
 # Changelog
 
+## 0.6.0 — 2026-08-15
+
+An empty answer now tells you why it is empty, the drawing of a hit is no longer
+the wrong enantiomer, and the server says something to its operator.
+
+⚠ **One reading change, and it is narrow.** An aromatic ring nitrogen carrying a
+hydrogen and a positive charge — `[nH+]` — was read wrongly in *both*
+directions. Pyridinium `c1cc[nH+]cc1` was refused where RDKit accepts it, and
+the five-membered `c1cc[nH+]c1` and acridinium were accepted where RDKit refuses
+them. A cation has no lone pair left to donate, and the rule demanded no explicit
+hydrogen rather than counting it. **If your collection contains aromatic
+`[nH+]`, rebuild for identical answers** — ChEMBL holds none in the rows this
+build accepts, so its agreement figure is unchanged at 99.991%, which also means
+ChEMBL cannot tell you whether your collection does.
+
+What did move is the refusal count: re-measured against a fresh ChEMBL download
+rather than carried over, **rows this build refuses and RDKit accepts went from
+7 to 5**. Four are an aromatic ring containing boron and one is a `[c-][n+]`
+ylide. The two acridinium-type rings left that list because 0.6.0 refuses them
+*and so does RDKit* — moved out of disagreement rather than fixed.
+
+**An empty structural search explains itself**
+
+A `Substructure` or `SMARTS` search that finds nothing comes back with an
+`explain` object instead of a bare zero: which fragment of the query the
+collection does not hold, and which `qopts` locks were in force. The second is
+the commonest invisible cause of a surprising empty result — `R` stops benzene
+matching naphthalene, and nothing in a zero says so.
+
+It costs an index lookup rather than a second search, and a search that *found*
+something never computes it. The field is absent from every other response, so a
+client written against Arthor's shape never meets it.
+
+⚠ **On a database built before 0.6.0 it answers "I cannot tell", and that is the
+honest answer.** The screening index drops a fragment both when nothing carries
+it and when more than one row in sixteen does — opposite facts with the same
+symptom. 0.6.0 records the second case as well, so absence becomes decisive;
+older shards did not, so they report `"decisive": false`, name no fragment, and
+say rebuilding is what settles it. Everything else about them works unchanged.
+
+**The mark on a drawn hit was the wrong enantiomer**
+
+The highlight travels inside a notation this build writes, and the writer
+reordered an atom's neighbours without flipping the descriptor that is a parity
+over that order. Same atoms, same bonds, same formula, same hit set — the other
+enantiomer. Every test about constitution passed on both sides of it for the
+life of the code. Round-trip fidelity on ChEMBL: **73.82% to 99.990%**.
+
+Hit sets never depended on chirality, so **no index needs rebuilding for this**.
+Only what you were shown was wrong.
+
+⚠ Residue, named rather than hidden: **271 molecules of 2.9 M** carry a
+three-coordinate chiral nitrogen, sulfur or phosphorus that still comes out
+mirrored. Two candidate rules were implemented and measured against RDKit during
+this cycle and both were refused — one broke 3 996 molecules of a 4 000 sample,
+and the one that fixed 119 while breaking 8 was rejected for scoring by accident
+rather than by mechanism.
+
+**The server talks to its operator**
+
+Structured events on stderr, `RUST_LOG` for filtering, `info` by default. A
+refused admission is reported — a stream of `503`s could not previously be told
+from a broken server. A degraded database warns when it mounts.
+
+⚠ **Query structures are never logged, at any level.** Checked rather than
+intended: a run driving searches against a full pool was grepped for the query
+that produced them, and it appears zero times.
+
+**Smaller things**
+
+- `index build` tells three different truths where it used to tell one: a
+  destination holding a shard, a destination holding something else (where
+  `--replace` is *not* the answer and used to be suggested), and an empty
+  directory — which now simply builds instead of being refused for holding a
+  shard it does not hold.
+- The standardiser's choice of which negative keeps its charge no longer depends
+  on how the record was spelled. 35 ChEMBL molecules change; 31 move toward
+  RDKit's answer and 4 away, because a canonical ranking is not *their* canonical
+  ranking.
+
+**Under the hood, and deliberately not wired up**
+
+There is now a canonical form, a 128-bit key over it, and RDKit's standardisation
+chain — normalisation catalogue, fragment parent, uncharger, reionizer — ported
+and diffed against the original. None of it is reachable from the binary.
+
+⚠ That is a decision, not an omission. Measuring the key over ChEMBL showed 4.12%
+of records merging, **99.88% of it through the "largest fragment is the compound"
+rule** — which cannot tell a counter-ion from a second active ingredient. Twenty
+four ionic liquids file under their shared anion; twenty five combination
+antibiotics file under the bigger drug, discarding tazobactam and sulbactam,
+which are drugs. Duplicate detection needs a second signal, and shipping it
+without one would quietly delete distinct substances.
+
+**Index format**
+
+Additive. A 0.6.0 build records which fragments are too common to index; older
+shards lack that and open exactly as before. **No rebuild is required by this
+release** — only the `[nH+]` reading above can change answers, and only on
+collections that contain it.
+
 ## 0.5.0 — 2026-08-11
 
 A database can be more than one shard, the aromatic reading got substantially
