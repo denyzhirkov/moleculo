@@ -1,5 +1,77 @@
 # Changelog
 
+## 0.7.0 — 2026-08-17
+
+A release about running this somewhere other than the machine that built it: a
+container image, configuration that refuses rather than guesses, and a build
+that gives the disk back when it fails.
+
+⚠ **Nothing about search or chemistry changed.** Answers, indexes and hit sets
+are identical to 0.6.0, and no index needs rebuilding.
+
+**Configuration is one validated thing, and it refuses at startup**
+
+Every setting is now reachable as a flag *or* an environment variable — a
+container is configured by its environment, not by a command line — with the
+flag winning, so an operator overriding a running system beats the image rather
+than the reverse. Every flag that worked before still works.
+
+It stops guessing. An unknown flag is an error rather than something ignored,
+because a typo that is ignored is a setting you believe you applied. A value
+that does not parse names the field and quotes back what it got. And ⚠ **a
+contradiction is refused**: `--no-search-limit` removes every bound, so giving
+it alongside `--max-seconds` means you believe something untrue about your
+server, and picking a winner would leave you believing it.
+
+**`--bind`, and why the default did not change**
+
+The server listened on `127.0.0.1`, hard-coded. That default is the security
+posture rather than an accident — the port is the only boundary this product
+has — so it stays, and `--bind` / `MOLECULO_BIND` is how anything opts out.
+
+⚠ **The container image sets `0.0.0.0` and has to**: inside a container loopback
+reaches nobody, and an image that kept the default would publish a port that
+answers nothing. That is exactly how this was found. What it means for you is in
+the README's security section: **the container's boundary is the port you map**,
+so `-p 127.0.0.1:8080:8080` and `-p 8080:8080` are not the same decision.
+
+**A container image carrying the binary from the release**
+
+Unpacked, not compiled. An image that builds from source is a *different
+artifact* from the one the release ritual verified, without the path-leak
+checking that keeps a builder's home directory out of a public binary. 15 MB,
+unprivileged as uid 10001, databases mounted read-only and never baked in —
+a molecule collection is your property and has no business inside an image that
+gets copied between registries.
+
+```sh
+docker build --build-arg VERSION=0.7.0 \
+             --build-arg TARGET=x86_64-unknown-linux-musl -t moleculo:0.7.0 .
+docker run --rm -p 127.0.0.1:8080:8080 -v /srv/indexes:/databases:ro moleculo:0.7.0
+```
+
+**A failed build gives the disk back**
+
+⚠ Measured on a volume deliberately 72 KB too small, and both halves were
+defects. The staging directory used to survive the failure holding everything it
+had written — on a 1 020 KB volume that left **zero free**, so the retry failed
+for a different reason than the first attempt. And the one useful line,
+`No space left on device`, was followed by fifty lines of usage text that pushed
+it off the screen. Now: one line, exit 1, nothing left behind, space returned.
+
+Provisioning number that follows from it: **size the disk for roughly twice the
+finished index** while a build runs. The sort spills beside it — 6.3 GB of runs
+next to a 10.7 GB index at 124 M molecules.
+
+**Still not here**
+
+⚠ `fmt=sdf` is still refused with a `400` naming what is missing. The generator
+exists and is close — the format is valid, RDKit reads 3 004 records with zero
+warnings, and tetrahedral stereochemistry survives — but **53 molecules of
+2 027 still come back with the wrong double-bond geometry**, and shipping an
+export that hands a chemist a different isomer is worse than refusing. Use `tsv`
+and generate coordinates with RDKit until it is right.
+
 ## 0.6.0 — 2026-08-15
 
 An empty answer now tells you why it is empty, the drawing of a hit is no longer

@@ -306,6 +306,90 @@ dies leaves nothing behind but the staging directory.
 moleculo serve ./indexes [more/roots ...] [--port 8080]
 ```
 
+### Configuration, and what it refuses
+
+Every setting is reachable as a flag **or** as an environment variable, because
+a container is configured by its environment and a shell is not. **The flag
+wins** — an operator debugging a running system overrides the image, not the
+other way round.
+
+| flag | environment |
+|---|---|
+| `<databases-dir>...` | `MOLECULO_DATABASES` (colon separated, like `PATH`) |
+| `--bind` | `MOLECULO_BIND` |
+| `--port` | `MOLECULO_PORT` |
+| `--build-dir` | `MOLECULO_BUILD_DIR` |
+| `--max-seconds` | `MOLECULO_MAX_SECONDS` |
+| `--max-candidates` | `MOLECULO_MAX_CANDIDATES` |
+| `--max-concurrent-searches` | `MOLECULO_MAX_CONCURRENT_SEARCHES` |
+| `--max-queued-searches` | `MOLECULO_MAX_QUEUED_SEARCHES` |
+| `--enable-reload` | `MOLECULO_ENABLE_RELOAD=1` |
+| `--no-search-limit` | `MOLECULO_NO_SEARCH_LIMIT=1` |
+
+⚠ **It refuses rather than guesses, at startup rather than at the first
+request.** Three cases are worth knowing because each is a mistake that used to
+be silent:
+
+- **an unknown flag is an error**, not something ignored — a typo that is
+  ignored is a setting you believe you applied;
+- **a value that does not parse names the field and quotes back what it got**;
+- **a contradiction is refused.** `--no-search-limit` removes every bound, so
+  giving it alongside `--max-seconds` means you believe something untrue about
+  your server, and picking a winner would leave you believing it.
+
+⚠ **`--bind` defaults to `127.0.0.1`, deliberately.** The port is the only
+boundary this product has, so loopback is the default everywhere except where
+something opts in — which the container image does, because inside a container
+loopback reaches nobody.
+
+### When a build runs out of disk
+
+⚠ Measured, not asserted — on a volume deliberately 72 KB too small for the
+index it was asked to write:
+
+```
+moleculo: build failed: No space left on device (os error 28)
+```
+
+One line, exit status 1, **and nothing left behind**: the half-written staging
+directory is removed, so the space it was holding comes back and a retry fails
+or succeeds on its own merits rather than on the wreckage of the last attempt.
+
+⚠ Both halves of that were defects until this was measured. The staging
+directory used to survive — on the disk that had just filled, it kept every byte
+it had written, leaving zero free and a retry that failed for a *different*
+reason. And the error used to be followed by fifty lines of usage text, which
+answers "what should I have typed" and is noise against "your disk is full".
+
+**Size the disk for roughly twice the finished index** while a build runs. The
+sort spills into the shard's staging directory before the merge reads it back,
+and at 124 M molecules those runs were 6.3 GB beside a 10.7 GB index.
+
+### In a container
+
+The image carries **the binary from the release**, unpacked — it does not
+compile its own. What runs in your cluster is byte-identical to what you would
+download, including the leak checking that keeps a builder's home directory out
+of it.
+
+```sh
+docker build --build-arg VERSION=0.7.0 \
+             --build-arg TARGET=x86_64-unknown-linux-musl -t moleculo:0.7.0 .
+
+docker run --rm -p 8080:8080 \
+  -v /srv/indexes:/databases:ro \
+  moleculo:0.7.0
+```
+
+- **Databases are mounted, never baked in.** A molecule collection is your
+  confidential property and has no business inside an image that gets copied
+  between registries. Mount it read-only; the server never writes to it.
+- **The process runs unprivileged** as uid 10001. It reads mounted indexes and
+  writes nothing outside a build directory, so root buys nothing and costs you
+  an argument with your security team.
+- ⚠ **Nothing is fetched at build time or at run time.** Verified by running the
+  image with `--network none` and searching inside it.
+
 Every subdirectory of every root that holds a valid index is served as a
 database, named after its directory. Several roots can be listed; two roots
 offering the same database name is an error rather than a silent winner, because
@@ -317,8 +401,11 @@ by name. A database made of several shards goes further: losing one shard leaves
 the others serving, with every affected search saying so — see
 [when a shard is missing](#when-a-shard-is-missing).
 
-The server listens on loopback only, and there is no authentication of any kind.
-Read [Security](#security) before exposing it to anyone but yourself.
+The server listens on **loopback by default** and there is no authentication of
+any kind. ⚠ `--bind` (or `MOLECULO_BIND`) will put it on another address, which
+the container image does because inside a container loopback reaches nobody —
+**that is the one place the port stops being the boundary**, so read
+[Security](#security) before setting it anywhere else.
 
 ### Search limits
 
@@ -891,6 +978,12 @@ Everything else on the list does something this does not.
 - It listens on loopback by default. **Keep it there**, or put it behind
   something that authenticates and rate limits. That is the supported way to
   expose this to more than one trusted user, and it is not optional advice.
+- ⚠ **The container image sets `MOLECULO_BIND=0.0.0.0`, and it has to.** Inside
+  a container loopback reaches nobody, so an image that kept the default would
+  publish a port that answers nothing. What that means for you is that **the
+  container's boundary is the port you map and the network you attach it to**,
+  not the process — `-p 127.0.0.1:8080:8080` keeps it on your host's loopback,
+  and `-p 8080:8080` does not.
 
 ---
 
