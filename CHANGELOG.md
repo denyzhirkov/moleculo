@@ -1,5 +1,77 @@
 # Changelog
 
+## 0.8.0 — 2026-08-22
+
+⚠ **Every index must be rebuilt.** The packed molecule changed shape and the
+index format moved from version 2 to 3. A shard of the older version is refused
+**by name**, loudly, rather than read with the wrong rules — which is what the
+version field is for, and why an old shard is not quietly misread into molecules
+that are garbage wearing a valid shape.
+
+**Results leave the building as SD files**
+
+`fmt=sdf` returns MDL V2000 records with generated 2D coordinates — the format
+every drawing program and registration system opens. It returned a `400` for the
+life of this project, because a molfile is a *drawing*: nothing in the file says
+cis or trans, a reader works it out from where the atoms sit, and a wrong drawing
+is a wrong molecule with nothing marking it as wrong.
+
+It is served now because the drawing was measured to a conclusion rather than
+argued about. Against `RDKit` over five corpora — 78 935 molecules carrying
+stereochemistry — **78 770 agree, 164 state less than they could, and one states
+something false.** That one is a 29-membered macrolactam whose ring shares 27
+atoms with its neighbour; the layout refuses a fused macrocycle by construction.
+
+⚠ Two things it does not carry, and both are lost when the SMILES is *read*, so
+they affect search as much as export: an isotope written as an explicit hydrogen
+(`[2H]` becomes an ordinary H, so a deuterated compound is indistinguishable from
+its parent) and radical electrons (a nitroxide comes back reduced). Roughly 20
+and 1 records per 100 000 respectively.
+
+**An empty answer says how many tautomeric forms your query has**
+
+A substructure search is exact. Draw the enol, search a collection that stores
+the keto form, and the answer is zero with no reason attached. The `explain`
+object now carries `tautomerForms`.
+
+⚠ **A fact about your query and never about the collection.** "This query has
+four forms" is arithmetic on the string you sent; "another of its forms is in
+here" would be a statement about the molecules, and this does not make it. The
+count includes the form you drew, so `1` means there is no other and rules the
+question out. `tautomerFormsComplete: false` means enumeration hit its bound and
+the count is a floor.
+
+It runs the reference's own 37 transforms and agrees with it on **94.5%** of a
+`ChEMBL` sample, compared set against set. About 20 ms on an answer that already
+found nothing, and `--no-tautomer-report` switches it off entirely.
+
+**271 molecules were reported as their mirror image**
+
+A stereocentre with three neighbours and exactly one ring-closure digit came back
+as the other enantiomer — a wrong molecule in a highlight and a wrong canonical
+key beside it. 0.0094% of `ChEMBL`, and not the kind of small that is also
+harmless. **271 fixed, 0 broken.**
+
+**Smaller indexes and faster similarity**
+
+The packed molecule is **8.1% smaller** and a scan **5.2% faster**: an atom with
+no unusual property costs one byte instead of two, and a bond that continues the
+chain costs its flags byte and nothing else. Across a whole index that is about
+2.6%.
+
+Similarity is **about 20% faster** for a separate reason: the scan was walking
+each fingerprint's words three times, computing the intersection and then both
+popcounts, where the query's count is the same for the whole pass and the
+target's was already stored in the index.
+
+**What is still behind**
+
+⚠ Similarity throughput remains the gap, and it now has a shape rather than a
+number. On this build, running without the fingerprint codec is **5.4x** faster
+than with it — that is a *setting*, and it costs a larger index. A further ~2x
+sits in the fingerprint width, and that one stays where it is: 512 bits was
+chosen on recall, and recall outranks speed here.
+
 ## 0.7.0 — 2026-08-17
 
 A release about running this somewhere other than the machine that built it: a

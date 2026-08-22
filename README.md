@@ -152,6 +152,19 @@ rather than fixing them.
 An index is a derived artifact: reproducible from the input and the builder
 version, safe to delete and rebuild, and never edited in place.
 
+⚠ **Indexes built before this release must be rebuilt.** The packed molecule
+changed shape — an atom with no unusual property now costs one byte instead of
+two, and a bond that continues the chain costs its flags byte and nothing else —
+so the index format moved from version 2 to 3. A shard of the older version is
+**refused by name**, loudly, rather than read with the wrong rules: this is
+exactly what the version field is for, and it is why the older shards are not
+silently misread into molecules that are garbage wearing a valid shape.
+
+What it buys, measured on 400 000 PubChem molecules: `mol.pack` **−8.1%** and a
+scan **5.2% faster** (30.4 against 28.9 million atoms a second). Across the whole
+index the size figure is about **−2.6%**, because the packed molecule is a third
+of it.
+
 ```sh
 moleculo index build molecules.smi ./indexes/mydb
 moleculo index inspect ./indexes/mydb
@@ -173,7 +186,7 @@ count](#choosing-the-shard-count-and-why-eight-is-not-always-the-answer).
 |---|---|
 | `--bits N` | similarity fingerprint width: 256, 512 (default), 1024 or 2048. Narrower costs recall, wider costs disk. Fixed at build time — it is a property of the index, not of a query. |
 | `--codec none\|zstd` | compress the molecule and record stores. Default `zstd`. |
-| `--fp-codec`, `--screen-codec` | the same, for the fingerprint column and the screening index. ⚠ `--fp-codec none` is **4.6x the similarity throughput for about 46% more index** — measured, see below. |
+| `--fp-codec`, `--screen-codec` | the same, for the fingerprint column and the screening index. ⚠ `--fp-codec none` is **6.6x the similarity throughput for about 26% more index** — measured, see below. |
 | `--replace` | swap out a shard that is already there. Requires a higher `--generation`. |
 | `--generation N` | index generation. Row identifiers are stable within one generation and only within one. |
 | `--notify URL` | call a running server's reload endpoint once the shard is published. |
@@ -187,13 +200,21 @@ at scale. Measured on a ten-core laptop:
 | molecules | one core | ten cores | index size | bytes/molecule |
 |---:|---:|---:|---:|---:|
 | 10 M PubChem | 50 minutes | — | 0.92 GB | 91.6 |
-| 124.4 M PubChem | 10 h 43 | **3 h 58** | 10.7 GB | 86.4 |
+| 124.4 M PubChem | 10 h 43 | **3 h 58** | 10.7 GB | 86.4 ⚠ |
 
 Note which way the density moved. Bigger collections cost *less* per molecule,
 because the screening index compresses better when each feature has more rows in
 it, so sizing from a small trial run overestimates rather than under. On ChEMBL,
-whose chemistry is heavier, the same build is 129.5 bytes per molecule — the
-range across the corpora tried here is 86 to 130.
+whose chemistry is heavier, the same build is **133.2** bytes per molecule — the
+range across the corpora tried here is 86 to 133.
+
+⚠ **The 124.4 M row is marked because it was measured on the previous index
+format** and has not been rebuilt since. Format 3 makes the packed molecule 8.1%
+smaller, which is about 2.6% of a whole index, so that row reads slightly high;
+the ChEMBL figure beside it was measured on this build. The two moved in opposite
+directions — ChEMBL grew from 129.5 despite the smaller molecules, because other
+slices have been added since — which is why neither number is scaled from the
+other.
 
 Three quarters of that is the two screening passes, and they run on as many
 workers as `--threads` asks for. Those two passes go **6.5x faster** on ten
@@ -274,16 +295,22 @@ Measured on one corpus, one machine and one commit, differing only in
 
 | | `zstd` (default) | `none` |
 |---|---:|---:|
-| similarity, ten threads | 84 M molecules/s | **385 M/s** |
-| similarity, one thread | 10 M/s | 53 M/s |
+| similarity, ten threads | 88 M molecules/s | **580 M/s** |
+| similarity, one thread | 10 M/s ⚠ | 53 M/s ⚠ |
 | substructure scan | unchanged | unchanged |
-| fingerprint column, 2.9 M molecules | 91 MB | 180 MB |
+| fingerprint column, 2.9 M molecules | 95 MB | 188 MB |
+| whole index, 2.9 M molecules | 0.39 GB, 133 B/mol | 0.49 GB, 168 B/mol |
+
+⚠ The two single-thread figures are marked because they were measured on an
+earlier build and have not been retaken; every other number in the table is from
+this one. The ten-thread row is the operative one either way.
 
 The substructure scan does not move because it never reads that column, which is
-the check that says the rest of the table is real. At 124 M the trade is a
-fingerprint column of 2.98 GB against 7.96, taking the whole index from 86 bytes
-per molecule to 126. **Compression stays the default**; if similarity is what
-your deployment does all day, `--fp-codec none` is the one flag that matters.
+the check that says the rest of the table is real. **Compression stays the
+default**; if similarity is what your deployment does all day, `--fp-codec none`
+is the one flag that matters — and on this corpus it costs a quarter more disk,
+not the half it costs on a lighter one, because the fingerprint column is a
+smaller share of a heavier index.
 
 **Plan for the memory, and read the number carefully.** The build is out-of-core
 and its own allocation stays small — 186 MB on one thread at 124 M, and 849 MB
@@ -342,6 +369,69 @@ boundary this product has, so loopback is the default everywhere except where
 something opts in — which the container image does, because inside a container
 loopback reaches nobody.
 
+### Before you start: what will it cost?
+
+```sh
+moleculo index estimate molecules.smi
+```
+
+```
+molecules      10000000
+sampled        49994 built, 6 refused by the parser
+index size     933.7 MB
+peak disk      1.5 GB  (the sort spills beside the index)
+build time     7 min  ⚠ reads low, see below
+```
+
+**It measures your data rather than quoting ours.** Fifty thousand of your
+molecules are built into a real index and scaled up, so the numbers come from
+your chemistry on your machine. ⚠ A density constant would have been a guess
+wearing a number — the collections measured here differ by half, from 83 bytes a
+molecule to 129.5, and that spread is exactly what decides whether a disk is big
+enough.
+
+⚠ **Two numbers, two directions, both checked against a real 10 M build:**
+
+- **Size reads high** — 933.7 MB estimated against 882.0 actual, **+6%**. A
+  feature's postings compress better the more rows hold it, so a full collection
+  costs less per molecule than a sample of it. Provision for this and you will
+  have room.
+- **Time reads low** — 7 minutes estimated against 9 min 20 s actual, **−25%**.
+  A sample small enough to estimate quickly never spills its sort to disk, so
+  the merge a real build pays for is missing from the figure. Allow margin.
+
+Neither is corrected by a fudge factor. One ratio from one comparison is a
+guess, and a guess dressed as a correction is worse than a number with its
+direction attached.
+
+The refusal count is worth reading too: molecules this build cannot parse are
+cheaper to find out about now than at hour three.
+
+### Watching a build
+
+⚠ **A build used to print nothing until it finished**, and at 124 M molecules
+that is four hours. There is no way to tell that from a hang, no resume if you
+kill it, and killing it is what people do. So it now says where it is:
+
+```
+INFO starting          pass="screening vocabulary" molecules=9999789
+INFO working           pass="screening vocabulary" done=3973120 total=9999789
+                       percent=40 per_second=66193 pass_seconds_left=91
+INFO pass complete     pass="screening vocabulary" molecules=9999789
+                       seconds=150 per_second=66588
+```
+
+**One line every thirty seconds**, per pass, on stderr — `RUST_LOG=info`, which
+is the default. A 10 M build costs 24 lines in total and a 7 420-molecule one
+costs 7, so nothing floods.
+
+⚠ **`pass_seconds_left` is of the current pass, not of the build.** A build has
+three passes over every molecule and they run at different rates — the two
+screening passes near 67 000 molecules a second on a ten-core laptop, the
+fingerprint pass near 126 000 — so a build-wide estimate would be a number this
+cannot honestly produce. What you get is a measurement of the pass you are
+watching.
+
 ### When a build runs out of disk
 
 ⚠ Measured, not asserted — on a volume deliberately 72 KB too small for the
@@ -360,6 +450,14 @@ directory used to survive — on the disk that had just filled, it kept every by
 it had written, leaving zero free and a retry that failed for a *different*
 reason. And the error used to be followed by fifty lines of usage text, which
 answers "what should I have typed" and is noise against "your disk is full".
+
+⚠ **A build you kill is a different case, and it does leave its staging behind.**
+That cleanup runs when a build *fails*; a process stopped by a signal does not
+get to run it. So `Ctrl-C` on a long build leaves a `<name>.building` directory
+holding whatever it had written — gigabytes, at the scales where killing a build
+is tempting. Nothing is lost and nothing needs deleting by hand: **the next build
+to the same destination removes it**, so a retry reclaims the space. Measured,
+because "it cleans up" and "it cleans up when killed" are different claims.
 
 **Size the disk for roughly twice the finished index** while a build runs. The
 sort spills into the shard's staging directory before the merge reads it back,
@@ -510,19 +608,37 @@ zero.
   "summary": "no molecule in this database contains 1 of the fragments this query requires",
   "absentFeatures": ["Pu"],
   "activeLocks": [],
-  "decisive": true
+  "decisive": true,
+  "tautomerForms": 2,
+  "tautomerFormsComplete": true
 }
 ```
 
-Two things it tells you, and both are things you cannot otherwise find out
-without redrawing the query several ways:
+Three things it tells you, and all three are things you cannot otherwise find
+out without redrawing the query several ways:
 
 - **which fragment of the query the collection simply does not hold** — often
   the whole answer;
 - **which `qopts` locks were in force.** ⚠ This is the commonest invisible cause
   of a surprising empty result: `R` stops benzene matching naphthalene and `C`
   stops hexane matching cyclohexane, and a caller who left one on has no way to
-  see that from a zero.
+  see that from a zero;
+- **how many tautomeric forms your query has.** A substructure search is exact:
+  draw the enol, and a collection that stores the keto form matches nothing. The
+  count includes the form you drew, so `1` means there is no other and rules the
+  question out. ⚠ `"tautomerFormsComplete": false` means enumeration hit its
+  bound and the count is a **floor**, not a total.
+
+⚠ **The tautomer count is a fact about your query and never about the
+collection.** "This query has four forms" is arithmetic on the string you sent;
+"another of its forms is in here" would be a statement about the molecules, and
+this does not make it. The enumeration runs the reference's own 37 transforms
+and agrees with it on **94.5%** of a ChEMBL sample, compared set against set.
+
+It costs about 20 ms on an answer that already found nothing, and
+`--no-tautomer-report` (or `MOLECULO_NO_TAUTOMER_REPORT=1`) switches it off
+entirely — the catalogue is then never compiled and the two fields never
+appear.
 
 ⚠ `"decisive": false` means the database was built before 0.6.0. Older shards
 open and search exactly as before, but they did not record which fragments are
@@ -580,7 +696,23 @@ that opens directly in Excel or pandas.
 ### Into chemistry software
 
 Results are SMILES, which RDKit, Open Babel and most toolkits read directly.
-`fmt=sdf` is **not** available — see below.
+
+Add `fmt=sdf` and the response is an MDL V2000 SD file with generated 2D
+coordinates — the format every drawing program and registration system opens.
+Stereochemistry is expressed the way a molfile expresses it: wedge and hash
+bonds for stereocentres, and the geometry itself for double bonds.
+
+The program line of each record says `moleculo` and the time it was written.
+Arthor stamps its own name there; putting *that* name on a file this program
+wrote would be a claim about its origin that is not true, and nothing in the
+format reads the line.
+
+⚠ **A molfile is a drawing, and that is what makes this exact rather than
+approximate.** Nothing in the file *says* cis or trans; a reader works it out
+from where the atoms sit. So the coordinates are checked against `RDKit` over a
+corpus rather than assumed: **78 935** molecules carrying stereochemistry, of
+which **one** comes back as a different isomer. Its cause is named under
+[Known limitations](#known-limitations).
 
 ---
 
@@ -822,21 +954,22 @@ rather than assumed:
 
 | | Arthor demo (4.2.4) | this build |
 |---|---|---|
-| similarity, resident database | 3 300 M molecules/s at 1.647 B, 256-bit | 84 M/s default, **385 M/s** with `--fp-codec none` — ten threads, 512-bit, 2.9 M |
+| similarity, resident database | 3 300 M molecules/s at 1.647 B, 256-bit | 88 M/s default, **580 M/s** with `--fp-codec none` — ten threads, 512-bit, 2.9 M |
 | largest database served | 15.18 B molecules | 124.4 M verified end to end |
 | substructure hit count | capped at 20 000 | exhaustive, or an honest floor |
-| index size | not published | 86.4 bytes per molecule |
+| index size | not published | 86.4 bytes per molecule ⚠ previous format |
 
 ⚠ **Read that first row with its asymmetry showing.** Their figure is a scan of
 1.647 billion fingerprints, ours of 2.9 million — a working set of tens of
 gigabytes against one of tens of megabytes. The comparison flatters this build,
 not Arthor, and the gap at equal scale is the wider one.
 
-**Where this build is behind: throughput and scale.** Similarity is **8.6x
-slower with the fingerprint column uncompressed and 39x with the default
+**Where this build is behind: throughput and scale.** Similarity is **5.7x
+slower with the fingerprint column uncompressed and 37x with the default
 `zstd`**, and the codec is therefore the first thing to change if similarity is
-what a deployment does all day. Of the 8.6x, about 2x is fingerprint width — 512
-bits against their 256 — and the rest is cores and memory bandwidth. Sharding is
+what a deployment does all day. Of the 5.7x, about 2x is fingerprint width — 512
+bits against their 256, chosen on recall rather than on speed — and the rest is
+cores and memory bandwidth. Sharding is
 within one machine, so Arthor still serves collections a hundred times larger
 than anything verified here. Building a single shard is partly parallel — the
 two screening passes go 6.5x on ten cores, the whole build 2.69x — and building
@@ -908,8 +1041,24 @@ Everything else on the list does something this does not.
 
 ## Known limitations
 
-- **`fmt=sdf` is refused with a `400`.** It needs 2D coordinate generation,
-  which is not implemented. Use `tsv` and generate coordinates with RDKit.
+- **One molecule in 78 935 leaves `fmt=sdf` as a different isomer.** Measured
+  against `RDKit` over world-drugs, real-space, mcule and two disjoint
+  100 000-molecule ChEMBL samples: **78 770 agree, 164 state *less* than they
+  could, and one states something false.** That one is a 29-membered macrolactam
+  whose ring shares 27 atoms with its neighbour — the layout refuses a fused
+  macrocycle by construction, and no amount of redrawing gets round it.
+  ⚠ **The 164 are losses, not lies**: a reader sees no configuration where it
+  expected one, which is visible, rather than the wrong one, which is not.
+- **`fmt=sdf` drops isotope labels written as explicit hydrogen, and radicals.**
+  `[18F]` and `[13C]` survive; `[2H]` written as its own atom is folded into a
+  hydrogen count that has nowhere to keep the mass number, so a deuterated
+  compound comes back as its ordinary form. Nitroxide radicals come back
+  reduced. ⚠ Both are upstream of the file writer — they are lost when the
+  SMILES is *read* — so they affect search as much as export. Roughly 20 and 1
+  records per 100 000 respectively.
+- **A hit whose structure will not fit V2000 is left out of the SD file** rather
+  than truncated: over 999 atoms or bonds needs V3000, which is not implemented.
+  The omission is logged with the identifier.
 - **The interface is one page and does four things.** Query, results, a local
   collection you can export, and a structure editor. There is no dashboard, no
   saved searches and no user accounts, and the API is the supported way to do
