@@ -1,5 +1,118 @@
 # Changelog
 
+## 0.9.0 — 2026-08-24
+
+✅ **No index needs rebuilding.** The format is unchanged at version 3. After a
+release that forced every operator to rebuild, that is the first thing worth
+saying.
+
+⚠ **A correction to what 0.8.0 told you, and it was about search rather than
+export.** The last release said that an isotope written as an explicit hydrogen
+and a radical electron are *"lost when the SMILES is read, so they affect search
+as much as export"*. **That was wrong.** `[2H]C([2H])([2H])Oc1ccccc1` and
+`[O]N1C(C)(C)CC(C)(C)N1[O]` both survive a SMILES round trip untouched; both
+defects lived in the molfile writer, and the isotope half was in fact already
+fixed by the `M  ISO` line that shipped *in that release*. If you read it and
+concluded a deuterated compound could not be searched here — **it could, and it
+always could.**
+
+**`fmt=sdf` no longer returns a different molecule than it was given**
+
+Three property lines and one atom-line field closed the last of it. `M  RAD`
+carries radical electrons, so a nitroxide stops coming back reduced; V2000's
+*valence* field carries a hydrogen the model cannot derive, so a sulfoximine
+stops coming back one hydrogen short. Measured on a 100 000-molecule ChEMBL
+sample, the class where the SD file is a *different graph* than the input went
+**133 → 23 → 8 → 0**.
+
+⚠ The control matters more than the fix: on that sample **exactly one record of
+100 000 differs** between the build before the valence change and the build
+after, byte for byte. A count of fixes cannot tell a surgical change from a
+lucky one.
+
+**Duplicates are answered, never removed**
+
+`GET|POST /dt/{database}/identity?query=...` returns the rows holding the same
+compound as your query — the free acid, its sodium salt, its lysine salt — each
+saying **how** it merged and what it set aside.
+
+⚠ **The one endpoint here that is ours rather than Arthor's.** Their API has no
+notion of identity, so nothing existing changed and a client written against
+them never calls it. It needs no stored key and no format change: a salt
+contains its own charge parent, so a substructure search on the parent finds the
+candidates and the key is computed on those alone.
+
+⚠ **It answers and never acts**, and that is a decision rather than an
+unfinished half. A key merges 4.12% of ChEMBL and **99.88% of those merges go
+through the "largest fragment is the compound" rule**, which cannot tell a
+counter-ion from a second active ingredient. Shown to a chemist that population
+is informative; acted on, it silently deletes distinct substances.
+
+**Two things to know before relying on it.** A combination product files under
+whichever of its drugs is larger — ask about the larger one and the row appears
+with the other named, ask about the smaller and **the row is not there at all**.
+And its per-row work is a standardisation rather than a scan step, so ask it
+about compounds: benzene against 2.9 M rows rejects 2 440 588 candidates on size
+and still runs to its deadline, returning `"complete": false`.
+
+**A long build stops looking like a hung one**
+
+The pass that reads your file and writes the shard now reports like the other
+three. It was silent, and it is the *first* thing a build does — on a large
+rebuild three shards spent about six and a half hours inside it while the log
+showed only the previous shards' tails, which reads exactly like a hang.
+
+⚠ It reports in **bytes**, because it is the pass that discovers how many
+molecules there are and so has no molecule count to report against. Every line
+now names its `unit`.
+
+**Under the hood, where you should see nothing change**
+
+- Parsers are held to a bound they were not held to before: a molecule or a
+  query pattern may never hold more atoms or bonds than its string holds bytes.
+  That is the "or an OOM" half of "a bad query is a 400, not a crash or an OOM",
+  and nothing had been testing it.
+- **12 600 single-edit mutations of this project's real query corpus** run on
+  every commit — 4 266 of them parse and 826 run all the way to a match. Random
+  characters reach shallow: of 4 096 such strings only 198 parse at all.
+- Three corpus golden files now pin what the molfile writer draws and what ring
+  and aromaticity perception sees. The second guards the headline correctness
+  figure, which nothing in CI had been guarding.
+
+**A defect this release found and did not fix**
+
+⚠ **A substructure query that specifies a stereocentre returns the other
+enantiomer.** Ask for the R form of a chiral compound and you get the S row, and
+the other way round. Chirality is enforced — exactly one of the two matches —
+but inverted.
+
+It was found while verifying this release, by driving the new `identity`
+endpoint against a chiral molecule and getting no answer where there plainly
+was one. **It is not new**: it reproduces on the 0.8.0 binary you may already be
+running, and it is declared here rather than quietly carried for a second
+release. Only queries that *write* a configuration are affected; an unspecified
+query matches both forms, which is correct.
+
+⚠ `identity` does not inherit it. Its candidate search carries no chirality on
+purpose — that search is a prefilter and the key comparison is the predicate,
+and **a prefilter stricter than its predicate drops answers**. Fixing that was
+the difference between an endpoint that works for chiral drugs and one that
+answers "not held" for nearly all of them.
+
+**Still true, and still limitations**
+
+- A hit whose structure will not fit V2000 is left out of the SD file rather
+  than truncated; over 999 atoms or bonds needs V3000, which is not implemented.
+- One molecule in 78 935 with stereochemistry comes back as a different isomer —
+  a fused 29-membered macrolactam the layout refuses by construction — and 164
+  state less than they could.
+- Sharding is within one machine, not across machines.
+- 211 molecules in 2 897 799 of ChEMBL read a different aromatic system from
+  RDKit, **202 of them cases where RDKit's own answer is not a function of the
+  molecule**.
+- No authentication and no per-client rate limiting. Bind to loopback or put
+  this behind something that has them.
+
 ## 0.8.0 — 2026-08-22
 
 ⚠ **Every index must be rebuilt.** The packed molecule changed shape and the
@@ -22,11 +135,19 @@ stereochemistry — **78 770 agree, 164 state less than they could, and one stat
 something false.** That one is a 29-membered macrolactam whose ring shares 27
 atoms with its neighbour; the layout refuses a fused macrocycle by construction.
 
-⚠ Two things it does not carry, and both are lost when the SMILES is *read*, so
-they affect search as much as export: an isotope written as an explicit hydrogen
+⚠ Two things it does not carry: an isotope written as an explicit hydrogen
 (`[2H]` becomes an ordinary H, so a deuterated compound is indistinguishable from
 its parent) and radical electrons (a nitroxide comes back reduced). Roughly 20
 and 1 records per 100 000 respectively.
+
+⚠⚠ **Corrected after release.** This paragraph originally said both were *"lost
+when the SMILES is read, so they affect search as much as export"*. **That was
+wrong.** Both molecules survive a SMILES round trip untouched — the defects were
+in the molfile writer, which had no line for a mass number and none for an
+unpaired electron. The isotope half was in fact already fixed by the `M  ISO`
+line **in this release**; the radical half is fixed in the next one. Search was
+never affected by either. The sentence is left standing above with its
+correction attached rather than quietly edited away.
 
 **An empty answer says how many tautomeric forms your query has**
 

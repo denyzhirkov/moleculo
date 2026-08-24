@@ -199,7 +199,7 @@ at scale. Measured on a ten-core laptop:
 
 | molecules | one core | ten cores | index size | bytes/molecule |
 |---:|---:|---:|---:|---:|
-| 10 M PubChem | 50 minutes | — | 0.92 GB | 91.6 |
+| 10 M PubChem | 50 minutes | — | 0.89 GB | **89.25** |
 | 124.4 M PubChem | 10 h 43 | **3 h 58** | 10.7 GB | 86.4 ⚠ |
 
 Note which way the density moved. Bigger collections cost *less* per molecule,
@@ -210,7 +210,9 @@ range across the corpora tried here is 86 to 133.
 
 ⚠ **The 124.4 M row is marked because it was measured on the previous index
 format** and has not been rebuilt since. Format 3 makes the packed molecule 8.1%
-smaller, which is about 2.6% of a whole index, so that row reads slightly high;
+smaller, which is about 2.6% of a whole index, so that row reads slightly high.
+The 10 M row above **was** rebuilt on this format for 0.9.0 and moved 91.6 →
+89.25, which is −2.6% and exactly what the format change predicts;
 the ChEMBL figure beside it was measured on this build. The two moved in opposite
 directions — ChEMBL grew from 129.5 despite the smaller molecules, because other
 slices have been added since — which is why neither number is scaled from the
@@ -422,14 +424,29 @@ INFO pass complete     pass="screening vocabulary" molecules=9999789
 ```
 
 **One line every thirty seconds**, per pass, on stderr — `RUST_LOG=info`, which
-is the default. A 10 M build costs 24 lines in total and a 7 420-molecule one
-costs 7, so nothing floods.
+is the default. A pass adds two more lines of its own, one when it starts and
+one when it finishes, so a build costs roughly `duration / 30s` lines per pass
+plus eight. A 7 420-molecule build costs **9 lines** and finishes inside one
+interval; a build that runs for an hour costs a few hundred.
+
+⚠ **That is a rule rather than a number on purpose.** This section used to quote
+"24 lines for a 10 M build", which was true of one machine at one thread count
+and of nothing else: the count is a function of how long the build takes, and
+that is exactly the figure the rest of this document says depends on your
+hardware. Measured both ways on the same 10 M collection and the same code:
+**24 lines at ten threads, 59 at two.**
 
 ⚠ **`pass_seconds_left` is of the current pass, not of the build.** A build has
-three passes over every molecule and they run at different rates — the two
-screening passes near 67 000 molecules a second on a ten-core laptop, the
-fingerprint pass near 126 000 — so a build-wide estimate would be a number this
-cannot honestly produce. What you get is a measurement of the pass you are
+**four** passes over every molecule and they run at different rates — ingest,
+then the two screening passes near 67 000 molecules a second on a ten-core
+laptop, then the fingerprint pass near 126 000 — so a build-wide estimate would
+be a number this cannot honestly produce.
+
+⚠ **Ingest reports in bytes, and it is the only pass that can.** The other three
+take their denominator from the shard's manifest, which already knows how many
+molecules it holds. Ingest is the pass that *discovers* that number, so it has
+none to report against; what it has is the length of the input it was handed.
+Each line names its `unit`, so a rate is never ambiguous about what it counts. What you get is a measurement of the pass you are
 watching.
 
 ### When a build runs out of disk
@@ -554,6 +571,35 @@ GET|POST /dt/{database}/search
 
 Several databases at once: `/dt/db1,db2/search`. Counts sum, every hit carries
 the database it came from, and `partStats` breaks the total down per database.
+
+### Do you already hold this compound?
+
+```
+GET|POST /dt/{database}/identity?query={smiles}
+```
+
+⚠ **The one endpoint here that is ours rather than Arthor's.** It returns the
+rows holding the *same compound* as your query — the free acid, its sodium salt,
+its lysine salt — and each says **how** it merged and what it set aside.
+
+```json
+{ "key": "43c6119de2e0654c…", "parent": "CC(=O)Oc(c1)c(ccc1)C(=O)O",
+  "matches": [
+    { "id": 12, "record": "CC(=O)Oc1ccccc1C(=O)O\tCHEMBL25",
+      "mergedBy": "whole-molecule", "setAside": [] },
+    { "id": 4471, "record": "CC(=O)Oc1ccccc1C(=O)O.NCCCC[C@H](N)C(=O)O\tCHEMBL22",
+      "mergedBy": "largest-fragment", "setAside": ["NCCCC[C@H](N)C(=O)O"] }
+  ],
+  "complete": true, "examined": 5, "skipped": 442, "time": 7620 }
+```
+
+`complete: false` means the wall clock ran out and `matches` is a **floor**.
+`key` is hex because a 128-bit key does not survive JSON's number type; `null`
+means your query has no key, which is not a key of its own.
+
+⚠ **It answers and never acts** — nothing is deduplicated, merged or deleted.
+See [Known limitations](#known-limitations) for the two things to know before
+relying on it, both of which matter.
 
 ### Substructure — "which of our compounds contain this fragment?"
 
@@ -1049,13 +1095,37 @@ Everything else on the list does something this does not.
   macrocycle by construction, and no amount of redrawing gets round it.
   ⚠ **The 164 are losses, not lies**: a reader sees no configuration where it
   expected one, which is visible, rather than the wrong one, which is not.
-- **`fmt=sdf` drops isotope labels written as explicit hydrogen, and radicals.**
-  `[18F]` and `[13C]` survive; `[2H]` written as its own atom is folded into a
-  hydrogen count that has nowhere to keep the mass number, so a deuterated
-  compound comes back as its ordinary form. Nitroxide radicals come back
-  reduced. ⚠ Both are upstream of the file writer — they are lost when the
-  SMILES is *read* — so they affect search as much as export. Roughly 20 and 1
-  records per 100 000 respectively.
+- **A hydrogen on a charged sulfur is dropped from an SD file.** A sulfoximine
+  written `N[SH+]([O-])c1ccccc1` comes back as `N[S+]([O-])c1ccccc1` — one
+  hydrogen short, which is a different compound. It is the last of its kind:
+  eight records in 100 000, all one motif, and it is a limit of what this writer
+  puts on the atom line rather than of the model. It affects the SD file only;
+  search sees the hydrogen.
+
+  ⚠ **This entry replaces a wrong one, and the correction is worth more than
+  the entry.** Until this entry replaced it, this section said that deuterium written as its own
+  atom and radical electrons were *"lost when the SMILES is read, so they affect
+  search as much as export"*. **That was false in its mechanism and therefore in
+  its scope.** `[2H]C([2H])([2H])Oc1ccccc1` and `[O]N1C(C)(C)CC(C)(C)N1[O]` both
+  survive a SMILES round trip untouched; nothing was ever lost on the way in.
+  Both were defects in the *molfile writer*, which had no line for a mass number
+  and none for an unpaired electron — `M  ISO`, shipped in 0.8.0, and `M  RAD`.
+  If you read the earlier text and concluded that a deuterated compound could
+  not be searched here, **it could, and it always could.**
+- ⚠ **A substructure query that specifies a stereocentre returns the *other*
+  enantiomer.** Given a collection holding both forms of a chiral compound, a
+  `Substructure` search for the R form comes back with the S row and nothing
+  else, and vice versa. Chirality is enforced — exactly one of the two matches —
+  but inverted. **This is not new in 0.9.0**: it reproduces on the released
+  0.8.0 binary and was found while verifying this one. It affects only queries
+  that *write* a configuration; an unspecified query matches both forms, which
+  is correct, and the vast majority of searches are unaffected.
+
+  ⚠ `identity` does **not** inherit it — its candidate search deliberately
+  carries no chirality, because that search is a prefilter and the key
+  comparison is the predicate. A prefilter stricter than its predicate drops
+  answers.
+
 - **A hit whose structure will not fit V2000 is left out of the SD file** rather
   than truncated: over 999 atoms or bonds needs V3000, which is not implemented.
   The omission is logged with the identifier.
@@ -1065,19 +1135,31 @@ Everything else on the list does something this does not.
   anything the page does not.
 - **The Arthor web UI has not been tested against this.** `/config` serves the
   blob it reads on startup, but nobody has pointed it here.
-- **No duplicate detection, though the machinery for it now exists.** The same
-  compound in two catalogues is still two unrelated rows: nothing computes an
-  identity while indexing, no slice stores one, and no endpoint answers "do you
-  already have this". What changed in 0.6.0 is underneath — there is now a
-  canonical form, a 128-bit key over it, and `RDKit`'s standardisation chain
-  ported and diffed against it. ⚠ **It is deliberately not wired up**, because
-  measuring it over ChEMBL showed that a key alone cannot authorise dropping a
-  row: 4.12% of records merge, and 99.88% of that merging happens through the
-  "largest fragment is the compound" rule, which cannot tell a counter-ion from
-  a second active ingredient. Twenty-four ionic liquids file under their shared
-  anion; twenty-five combination antibiotics file under the bigger drug. Dedup
-  needs a second signal, and shipping it without one would silently delete
-  distinct substances.
+- **Duplicates are answered, never removed.** `/dt/{db}/identity?query=...`
+  returns the rows holding the same compound as your query — the free acid, its
+  sodium salt, its lysine salt — each saying **how** it merged and what it set
+  aside. Nothing is deleted, deduplicated or rewritten, and that is a decision
+  rather than an unfinished feature: a key merges 4.12% of ChEMBL and **99.88%
+  of those merges go through the "largest fragment is the compound" rule**,
+  which cannot tell a counter-ion from a second active ingredient. Shown to a
+  chemist that population is informative; acted on, it silently deletes distinct
+  substances.
+
+  ⚠ **A combination product answers for its larger drug and is missing from the
+  smaller one's answer.** A row holding two actives files under whichever
+  fragment is bigger. Ask about the bigger one and the row appears with the
+  other named; ask about the smaller and **the row is not there**. In ChEMBL
+  that is twenty-five combination antibiotics filing under the antibiotic and
+  discarding tazobactam and sulbactam, which are drugs, plus twenty-four ionic
+  liquids under a shared anion. Inherited from the reference's own rule; no
+  endpoint design fixes it.
+
+  ⚠ **Ask it about compounds, not about general structures.** Its per-row work
+  is a standardisation rather than a scan step, so candidates are filtered by
+  heavy-atom count first — asked for benzene against 2.9 M rows it rejects
+  **2 440 588 candidates and standardises one**. Rejecting still costs a parse,
+  so the loop carries the same wall clock a search does and benzene comes back
+  at the deadline with `"complete": false`. Use `/search` for that question.
 - **Sharding is within one machine, not across machines.** A database may be
   built as many shards and is searched across all of them, but every shard has
   to be on the box serving it. Several databases can still be searched in one
