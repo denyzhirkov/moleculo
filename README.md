@@ -188,6 +188,7 @@ count](#choosing-the-shard-count-and-why-eight-is-not-always-the-answer).
 | `--codec none\|zstd` | compress the molecule and record stores. Default `zstd`. |
 | `--fp-codec`, `--screen-codec` | the same, for the fingerprint column and the screening index. ⚠ `--fp-codec none` is **6.6x the similarity throughput for about 26% more index** — measured, see below. |
 | `--replace` | swap out a shard that is already there. Requires a higher `--generation`. |
+| `--resume` | continue an interrupted sharded build: a shard already sealed is skipped rather than refused. ⚠ Only correct if the input file has not changed — a shard records how many molecules it holds, not which bytes it came from |
 | `--generation N` | index generation. Row identifiers are stable within one generation and only within one. |
 | `--notify URL` | call a running server's reload endpoint once the shard is published. |
 | `--threads N` | workers for the two screening passes, which are three quarters of a large build. Default: the machine's parallelism. Does not change the shard; does raise memory. |
@@ -200,7 +201,8 @@ at scale. Measured on a ten-core laptop:
 | molecules | one core | ten cores | index size | bytes/molecule |
 |---:|---:|---:|---:|---:|
 | 10 M PubChem | 50 minutes | — | 0.89 GB | **89.25** |
-| 124.4 M PubChem | 10 h 43 | **3 h 58** | 10.7 GB | 86.4 ⚠ |
+| 124.4 M PubChem, one shard | 10 h 43 | **3 h 58** | 10.7 GB | 86.4 ⚠ |
+| 124.4 M PubChem, 16 shards | — | ~18 h at two threads ⚠ | 10.49 GB | **84.34** |
 
 Note which way the density moved. Bigger collections cost *less* per molecule,
 because the screening index compresses better when each feature has more rows in
@@ -208,9 +210,17 @@ it, so sizing from a small trial run overestimates rather than under. On ChEMBL,
 whose chemistry is heavier, the same build is **133.2** bytes per molecule — the
 range across the corpora tried here is 86 to 133.
 
-⚠ **The 124.4 M row is marked because it was measured on the previous index
-format** and has not been rebuilt since. Format 3 makes the packed molecule 8.1%
-smaller, which is about 2.6% of a whole index, so that row reads slightly high.
+⚠ **The one-shard 124.4 M row is marked because it was measured on the previous
+index format**, and it is kept rather than replaced. The row under it is the
+same collection rebuilt for 0.10.0 — but on **format 3 and in 16 shards, at two
+threads on a laptop somebody was using**, so its size and its time answer
+different questions from the row above and neither is a correction of the other.
+Density falls with shard size as well as with format, so 86.4 → 84.34 is two
+causes and this document will not pretend to have separated them. ⚠ The **time**
+in that row is not a measurement of this software at all: it is what a
+deliberately gentle build costs on a busy machine, recorded so nobody reads the
+blank in the "one core" column as missing data.
+
 The 10 M row above **was** rebuilt on this format for 0.9.0 and moved 91.6 →
 89.25, which is −2.6% and exactly what the format change predicts;
 the ChEMBL figure beside it was measured on this build. The two moved in opposite
@@ -412,8 +422,9 @@ cheaper to find out about now than at hour three.
 ### Watching a build
 
 ⚠ **A build used to print nothing until it finished**, and at 124 M molecules
-that is four hours. There is no way to tell that from a hang, no resume if you
-kill it, and killing it is what people do. So it now says where it is:
+that is four hours. There is no way to tell that from a hang, and killing it is
+what people do. So it now says where it is — and since 0.10.0 killing it costs
+only the shard in flight, because `--resume` continues the rest:
 
 ```
 INFO starting          pass="screening vocabulary" molecules=9999789
@@ -619,6 +630,19 @@ curl -G 'http://localhost:8080/dt/mydb/search' \
 | `C` | lock chains — hexane stops matching cyclohexane |
 | `Q` | lock formal charge |
 | `I` | lock isotope |
+| `S` | lock stereochemistry **out** — every atom the query did not already speak about must *not* be a stereocentre. ⚠ The opposite of what the letter suggests |
+| `N` | **negate**: return the molecules that do *not* match. Not a lock — it does not rewrite the query |
+| `G` | **ours, not Arthor's**: enforce the configurations the query draws, so a chiral query stops matching its mirror |
+
+⚠ **`R`, `C`, `Q`, `I`, `S` and `N` are Arthor's**; `G` is an extension of ours
+and Arthor answers `400` to it, which is why it is a letter rather than a query
+parameter — an unknown parameter it *ignores*, so a client would have got a
+different answer with no way to know.
+
+⚠ **Without `G`, a query that draws a stereocentre matches both enantiomers**,
+which is what both Arthor and `RDKit` do by default. Asked on a 3 004-molecule
+collection, Arthor answers 212 for a chiral query and 212 for its mirror;
+`RDKit`'s default answers 207 and 207. `G` is how you say you meant the wedge.
 
 ### SMARTS — "this nitrogen, in this environment"
 
@@ -1112,20 +1136,6 @@ Everything else on the list does something this does not.
   and none for an unpaired electron — `M  ISO`, shipped in 0.8.0, and `M  RAD`.
   If you read the earlier text and concluded that a deuterated compound could
   not be searched here, **it could, and it always could.**
-- ⚠ **A substructure query that specifies a stereocentre returns the *other*
-  enantiomer.** Given a collection holding both forms of a chiral compound, a
-  `Substructure` search for the R form comes back with the S row and nothing
-  else, and vice versa. Chirality is enforced — exactly one of the two matches —
-  but inverted. **This is not new in 0.9.0**: it reproduces on the released
-  0.8.0 binary and was found while verifying this one. It affects only queries
-  that *write* a configuration; an unspecified query matches both forms, which
-  is correct, and the vast majority of searches are unaffected.
-
-  ⚠ `identity` does **not** inherit it — its candidate search deliberately
-  carries no chirality, because that search is a prefilter and the key
-  comparison is the predicate. A prefilter stricter than its predicate drops
-  answers.
-
 - **A hit whose structure will not fit V2000 is left out of the SD file** rather
   than truncated: over 999 atoms or bonds needs V3000, which is not implemented.
   The omission is logged with the identifier.

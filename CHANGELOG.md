@@ -1,5 +1,97 @@
 # Changelog
 
+## 0.10.0 — 2026-08-26
+
+✅ **No index needs rebuilding.** The format is unchanged at version 3.
+
+⚠⚠ **If you run 0.9.0 or earlier, this fixes something that can break a
+database you already have.** Build a sharded database, then run the same command
+again — which is what anyone does after a failure, or by habit — and every shard
+is refused, correctly, **and the database's manifest is rewritten to say it has
+no shards.** The shard directories are all still there; the database simply
+stops opening, and the only sign is `every shard is missing or unreadable`.
+
+Reproduced on the released 0.9.0 binary. The manifest is now read from the disk:
+it describes the database, not the build that just failed. **If a database of
+yours has stopped opening this way, the data is intact** — re-run the build with
+`--resume` and it will repair the manifest without rebuilding anything.
+
+**An interrupted build can be continued**
+
+`--resume` skips a shard already sealed at the destination. A 124 M build is
+hours; before this there was no way to continue one, and killing it meant
+starting over. A resumed database is byte-for-byte the database a full build
+would have made.
+
+⚠ **Only correct if the input file has not changed.** A shard records how many
+molecules it holds, not which bytes of the input it came from, so nothing can
+tell a shard built from your current file from one built before you edited it.
+Resuming over a different file would build a database mixing two collections and
+looking entirely valid. That is why the flag exists rather than the behaviour.
+
+⚠ And `--shard` together with `--shards` is now **refused** instead of quietly
+building everything. The check tested the flag's value rather than whether you
+gave it, so `--shards 16 --shard 0` built all sixteen.
+
+**Substructure search stopped losing molecules**
+
+Four separate defects, found by one question with no oracle in it: *does a
+molecule match itself as a substructure query?* It always should. Across three
+corpora, **3 221 molecules of 22 423 did not — now none do.**
+
+- A bare two-letter element was read as a different element: `Sc1ccccc1` parsed
+  as scandium plus five carbons, six atoms where seven were written. Any query
+  holding `S` before an aromatic carbon matched the wrong thing or nothing.
+  Phenothiazines are the family that found it.
+- A chiral descriptor was stored in one convention by the SMILES reader and
+  another by the SMARTS reader, so the two disagreed whenever anything preceded
+  the centre — which is nearly always.
+- Chirality was compared before the query's neighbours had been matched to the
+  target's, which cannot mean anything: a descriptor is a parity over an order.
+- A `/` or `\` was read as a demand for a single bond, so a mark next to an
+  aromatic ring asked for connectivity the molecule never had.
+
+⚠ **A query that draws a stereocentre now matches both enantiomers again**, and
+that is deliberate. Both Arthor and `RDKit` do the same by default — asked on a
+3 004-molecule collection, Arthor answers 212 for a chiral query and 212 for its
+mirror, `RDKit` 207 and 207 — and this build had been the odd one out for its
+whole life, first invertedly and then correctly. **Correct is not the same as
+right**: a search that halves your hit set because you drew a wedge is answering
+a question you did not ask. Use `qopts=G` to say you meant it.
+
+**Three more `qopts` letters, and two of them were always yours**
+
+- **`S`** and **`N`** are Arthor's, and this build was answering `400` to both.
+  A client using either got an answer from the reference and a refusal here.
+- **`S`** locks stereochemistry *out*: every atom the query did not already
+  speak about must not be a stereocentre. The opposite of what the letter
+  suggests.
+- **`N`** negates: it returns the molecules that do **not** match. Verified an
+  exact complement — on a 2.9 M collection, 689 064 matching and 2 208 735 not,
+  summing to the whole.
+- **`G`** is ours. It enforces the configurations your query draws.
+
+⚠ Two things `N` refuses rather than fudges. Its count is a **ceiling** where an
+ordinary count is a floor, so the rows are withheld until it settles — a
+half-finished negation would name rows that are about to match. And a search a
+time limit cut short **cannot be negated at all**, because its complement would
+contain matching rows permanently.
+
+**Still true, and still limitations**
+
+- A hit whose structure will not fit V2000 is left out of the SD file rather
+  than truncated; over 999 atoms or bonds needs V3000, which is not implemented.
+- One molecule in 78 935 with stereochemistry comes back from `fmt=sdf` as a
+  different isomer, and 164 state less than they could.
+- A combination product files under whichever of its drugs is larger, so
+  `identity` will not find it under the smaller one.
+- Sharding is within one machine, not across machines.
+- 211 molecules in 2 897 799 of ChEMBL read a different aromatic system from
+  RDKit, **202 of them cases where RDKit's own answer is not a function of the
+  molecule**.
+- No authentication and no per-client rate limiting. Bind to loopback or put
+  this behind something that has them.
+
 ## 0.9.0 — 2026-08-24
 
 ✅ **No index needs rebuilding.** The format is unchanged at version 3. After a
