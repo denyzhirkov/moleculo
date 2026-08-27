@@ -1,5 +1,100 @@
 # Changelog
 
+## 0.11.0 — 2026-08-27
+
+✅ **No index needs rebuilding.** The format is unchanged at version 3.
+
+⚠⚠ **Three of these change answers you have already been given.** If you have
+searched for a deuterated compound, a metal complex, or a molecule with a
+sulfoxide in a ring, the result you got was wrong and this release corrects it.
+
+**A query naming an element inside brackets now means that element**
+
+Inside a SMARTS bracket, element symbols and query primitives share one syntax,
+and this build resolved every collision toward the primitive. `[2H]` compiled to
+*"isotope 2, carrying one hydrogen"* — **with the element dropped entirely** — so
+a deuterium, which carries no hydrogens, failed a query drawn from itself, while
+the same pattern matched unrelated atoms such as `[NH+]`. Wrong in two
+directions from one cause.
+
+Seventeen two-letter symbols went the same way. `[Rh]` was read as *"in a ring,
+with one implicit hydrogen"*; `[Rb]` as *"in a ring, and an aromatic boron"*, a
+contradiction that matches nothing. ⚠ Eight were misread silently and nine were
+refused outright as a `400` — and **the silent eight were the dangerous half**,
+because a refusal is visible and a contradiction is not.
+
+Measured over a 497 335-molecule PubChem sample: **3 144 molecules could not be
+found by a query written from themselves, and now can.** A further 358 molecules
+could not be turned into a query at all and now can.
+
+⚠ `[CH3]` still means *a carbon with three hydrogens*, and `[H1]`, `[!H]`,
+`[H;R]` and `[H,C]` still count hydrogens. The rule was read out of the
+reference's grammar rather than invented: `H` is the element only when the whole
+bracket is *isotope, symbol, charge, label* and nothing else, which is why
+`[H+]` is a proton and `[H&+]` is "one hydrogen and a positive charge".
+
+**A sulfoxide in a ring is no longer returned as its mirror image**
+
+A stereocentre written with its ring-closure digit followed by a bond — the shape
+a cyclic sulfoxide takes, `[S@]1=O` — had its configuration inverted. ⚠ In the
+whole of PubChem the pattern occurs **3 671 times and every one is a sulfoxide**;
+all 3 671 were mirrored and now agree with the reference oracle. Round-tripping a
+molecule through this build no longer changes 14 stereocentres in 497 877.
+
+**A search now tells you when it could not decide about a row**
+
+Finding whether a query occurs in a molecule is NP-complete, so the matcher gives
+up on a molecule after a fixed amount of work rather than hanging your build on
+one row. ⚠ **Until now those rows were reported as "your query does not occur
+here."** They are now counted apart, in a new `undecided` field, and the warning
+says the count is a floor.
+
+For calibration: matching every molecule against **itself** — the easiest query
+there is — **455 of 497 693** PubChem molecules exceed the budget. All of them
+are symmetric giants: dendrimers, polyfluorinated repeats, cage boranes. ⚠
+Raising the budget is deliberately not offered as a fix, because it trades a
+silent wrong answer for a slow one.
+
+⚠ The field is omitted when it is zero, so a client written against the
+reference API sees exactly the response shape it saw before.
+
+**Concurrent similarity searches now share one pass over the data**
+
+Similarity scores every molecule in the collection, and until now every
+concurrent query did that separately. Queries arriving while a pass is running
+join the next one, so the server's work per query stops growing with load:
+**at ten concurrent queries it was 142 ms each and is now about 60**.
+
+⚠ A single-user server pays nothing for this — one query is 21.5 ms against
+21.1 before. ⚠ And a query never joins a pass **already in progress**: it would
+receive a score distribution covering part of the collection, which is a wrong
+answer rather than a partial one.
+
+### Still true, and now measured more precisely
+
+- ⚠ **The identity key is not yet invariant to how a molecule was written.** The
+  same compound spelled two ways gives two keys **17 times in 100 000**, so
+  `/dt/{db}/identity` can answer *"we do not hold this"* about a compound the
+  collection holds; **40 more in 100 000** are refused in one spelling and
+  accepted in another. The three reference corpora read 100.0000% over 179 304
+  strings, so it takes awkward chemistry to show. Search is unaffected — no hit
+  set depends on the key.
+- ⚠ **22 of 497 877 structures we hand back as SMILES are read by other tools as
+  a different molecule, and 12 are not read at all.** All are fused ring systems
+  where this build marks a ring-fusion bond aromatic and both references mark it
+  single. The molecule stored and searched here is correct; the written form is
+  not portable. `fmt=sdf` does not have this problem.
+- **One molecule in 78 935 still leaves `fmt=sdf` as a different isomer**, and a
+  hydrogen on a charged sulfur is still dropped from an SD file. Unchanged.
+
+### A correction to what 0.8.0 and 0.9.0 published
+
+The README told you that if you had concluded a deuterated compound could not be
+searched here, *"it could, and it always could."* ⚠ **That was too strong.** The
+model always kept the deuterium — nothing was lost reading the SMILES, which is
+what that correction was about and it was true — but the **query** side dropped
+the element, so searching for one did not work. It works from this release.
+
 ## 0.10.0 — 2026-08-26
 
 ✅ **No index needs rebuilding.** The format is unchanged at version 3.

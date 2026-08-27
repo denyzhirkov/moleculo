@@ -26,7 +26,7 @@ structures never leave the process.
 - [Getting results out](#getting-results-out)
 - [Operating it](#operating-it) — adding data, several sources, reloading, a missing shard
 - [The search page](#the-search-page) — draw a query, read the results, keep what matters
-- [What this is measured against](#what-this-is-measured-against) — RDKit, Arthor, and where this loses
+- [What this is measured against](#what-this-is-measured-against) — RDKit, Arthor, where this loses and where the answer is better
 - [Which of these you actually want](#which-of-these-you-actually-want)
 - [Known limitations](#known-limitations)
 - [Security](#security)
@@ -1027,7 +1027,32 @@ rather than assumed:
 | similarity, resident database | 3 300 M molecules/s at 1.647 B, 256-bit | 88 M/s default, **580 M/s** with `--fp-codec none` — ten threads, 512-bit, 2.9 M |
 | largest database served | 15.18 B molecules | 124.4 M verified end to end |
 | substructure hit count | capped at 20 000 | exhaustive, or an honest floor |
-| index size | not published | 86.4 bytes per molecule ⚠ previous format |
+| index size | not published | **84.3 bytes per molecule** — 124 427 347 molecules in 16 shards, 10.49 GB |
+
+⚠ **The index-size row is the one number a buyer asks first and it cannot be
+compared**: Arthor publishes no such figure, so ours stands alone rather than
+beside anything. It also replaces an earlier 86.4, which was **one shard on the
+previous format** — a different measurement, not a correction.
+
+**And a second table, because the first one is only about speed and size.** What
+follows is not a benchmark. It is what the *answer* tells you, which is where
+this build has spent its effort:
+
+| when | Arthor demo | this build |
+|---|---|---|
+| a substructure count runs past 20 000 | caps and reports `hasMore: false` | converges, however long it takes |
+| a limit cut the search short | no signal in the response | says so in `warning`, **and** gives the number in `verified` |
+| a molecule is too branched to decide | counted as a non-match | counted apart, in `undecided` |
+| you negate a search whose count is a floor | answers | **refused** — the complement of a floor contains matching rows permanently |
+| a similarity search is cut short | answers | **refused with `503`** rather than returning a histogram biased by what it missed |
+| nothing matched | empty | `explain` says what was absent, and how many tautomeric forms your query has |
+| you ask "do we already hold this?" | ⚠ **no such endpoint** | `/dt/{db}/identity`, saying how each row merged and what it set aside |
+| your query drew stereochemistry | ignored | ignored by default, honoured on `qopts=G` |
+
+⚠ **Every row of that table is a *reported fact*, not a benchmark**, and several
+of them exist because the honest answer was slower or emptier than the
+convenient one. The line this build will not cross is a count that is a floor
+presented as final.
 
 ⚠ **Read that first row with its asymmetry showing.** Their figure is a scan of
 1.647 billion fingerprints, ours of 2.9 million — a working set of tens of
@@ -1136,6 +1161,19 @@ Everything else on the list does something this does not.
   and none for an unpaired electron — `M  ISO`, shipped in 0.8.0, and `M  RAD`.
   If you read the earlier text and concluded that a deuterated compound could
   not be searched here, **it could, and it always could.**
+
+  ⚠ **And that last sentence was itself too strong until this release, so it is
+  corrected rather than quietly repaired.** The *model* always kept the
+  deuterium — nothing was lost on the way in, which is what the paragraph above
+  says and it is true. But **searching** for one did not work: inside a SMARTS
+  bracket, `[2H]` compiled to *"isotope 2, carrying one hydrogen"* with the
+  element dropped entirely, so a deuterium — which carries no hydrogens — failed
+  a query drawn from itself, while the same pattern matched unrelated atoms like
+  `[NH+]`. Seventeen two-letter element symbols went the same way: `[Rh]` was
+  read as *"in a ring, with one implicit hydrogen"* and `[Rb]` as a
+  contradiction that matched nothing. Fixed in this release, measured at
+  **3 144 molecules in 497 335** of `PubChem` that could not be found by a query
+  written from themselves.
 - **A hit whose structure will not fit V2000 is left out of the SD file** rather
   than truncated: over 999 atoms or bonds needs V3000, which is not implemented.
   The omission is logged with the identifier.
@@ -1170,6 +1208,38 @@ Everything else on the list does something this does not.
   **2 440 588 candidates and standardises one**. Rejecting still costs a parse,
   so the loop carries the same wall clock a search does and benzene comes back
   at the deadline with `"complete": false`. Use `/search` for that question.
+- **The identity key is not yet invariant to how a molecule was written.**
+  Hand `/dt/{db}/identity` the same compound spelled two different ways and
+  **17 times in 100 000 you get two different keys**, which means the endpoint
+  can answer *"we do not hold this"* about a compound the collection holds.
+  Measured over 100 000 PubChem molecules in 599 544 spellings; the three
+  reference corpora read **100.0000%** over 179 304 strings, so this needs a
+  collection with the awkward chemistry in it to show at all. Three causes,
+  all identified: cyclic sulfoxides, fullerene cages, and small fused ring
+  systems. ⚠ **A further 40 in 100 000 are refused in one spelling and accepted
+  in another** — the same molecule, a `400` or a `200` depending on where the
+  author started the string. Both are being worked on; neither affects
+  substructure, SMARTS, similarity or formula search, whose hit sets do not
+  depend on the key.
+- **Some rows cannot be decided, and now they say so instead of counting as
+  misses.** Subgraph isomorphism is NP-complete, so the matcher abandons a
+  molecule after a fixed amount of work rather than hanging your build on one
+  row — a symmetric giant with a dozen interchangeable arms can outrun any
+  budget. Those rows arrive in the response as **`undecided`**, counted apart
+  from the misses, and the warning says the count is a floor. ⚠ **Earlier
+  releases reported them silently as "your query does not occur here."** For
+  calibration: matching every molecule against **itself** — the easiest query
+  there is — 455 of 497 693 PubChem molecules exceed the budget. Raising it is
+  not offered as a fix, because it trades a silent wrong answer for a slow one.
+- **Some structures we hand back as SMILES are read by other tools as a
+  different molecule.** `fmt=smiles` and the highlight strings are consumed by
+  whatever you pipe them into, and over 497 877 PubChem molecules **22 come back
+  through RDKit as a different graph and 12 it will not read at all** — 0.007%,
+  all of them fused ring systems where this build marks a ring-fusion bond
+  aromatic and both RDKit and Arthor mark it single. ⚠ **The molecule stored and
+  searched here is correct**; it is the written form that is not portable. If
+  you are round-tripping results through another toolkit, `fmt=sdf` does not
+  have this problem.
 - **Sharding is within one machine, not across machines.** A database may be
   built as many shards and is searched across all of them, but every shard has
   to be on the box serving it. Several databases can still be searched in one
