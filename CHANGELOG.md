@@ -1,5 +1,87 @@
 # Changelog
 
+## 0.12.0 — 2026-08-27
+
+✅ **No index needs rebuilding.** The format is unchanged at version 3.
+
+Three endpoints the reference has and this did not. All three are **off by
+default**, each behind its own switch, and everything this server did before is
+unchanged.
+
+**Warming an index before you need it** — `--enable-index-control`
+
+The first search against a cold index pays for reading it off disk, which is an
+hour at 124 M. `PUT /dt/{db}/data?idxtouch=SUB` (or `SIM`) asks for that in
+advance and answers with the database's description, `memInfo` included, so you
+can see how much arrived.
+
+⚠ **Warming is advice, not a command.** The kernel may honour it now, later or
+never. Measured: on a 2.9 M index the substructure slices went from 0% resident
+to 100% in three seconds; on Linux a 64 MB mapping came back at 320 pages of
+16 384 within a second, because the readahead is started and not waited for.
+
+⚠ **And it is one of the few things here by which a careless client hurts its
+neighbours rather than itself** — warming a 124 M index pulls 10.5 GB into the
+page cache and can push everything else on the machine out of it. That is why it
+is a switch.
+
+**`idxevict` works on Linux and cannot work on macOS** — and says so
+
+Dropping a file's pages needs `posix_fadvise`, which macOS does not have. ⚠ The
+call that looks like it should work returns success and does nothing:
+
+```text
+                                   macOS                    Linux
+madvise(MADV_DONTNEED)   0, 100% still resident   0, 16384 still resident
+posix_fadvise(DONTNEED)  does not exist           0, 16384 -> 0 resident
+```
+
+So on macOS the endpoint refuses and explains, rather than answering 200 over a
+page cache it did not touch.
+
+**Sending a collection over HTTP** — `--enable-upload`, with `--build-dir`
+
+```sh
+curl -X POST --data-binary @catalogue.smi "http://host:8080/dt/upload?name=vendor"
+```
+
+⚠ **`"built": false` is in the response and is the part to read.** The file is
+stored where a hand-copied one goes; it does not build here, because a 124 M
+build is hours and a request that runs for hours looks like a hung server. It
+becomes searchable at the next reload, exactly as a copied file does.
+
+⚠ **A name already in use is refused, never replaced.** Uploads are bounded —
+2 GB by default, `--max-upload-bytes` to change it, and an oversized body is
+refused before it is read into memory. The name is checked against a strict
+allow-list because it becomes a filename.
+
+⚠ **There is still no authentication in front of any of this**, which is why
+uploading is off unless you switch it on, and why the two settings are refused
+as a pair: `--enable-upload` without `--build-dir` will not start.
+
+**A default order for databases** — `--enable-index-control`
+
+`POST /dt/setpriority` takes a JSON array of names and sets the order
+`GET /dt/data` lists them in. Names it does not have are ignored rather than
+refused, so one stale entry does not fail the request. ⚠ The order is not saved
+across a restart — unlike a database's *name*, which stands in every URL, an
+ordering that reverts costs a client nothing it cannot see.
+
+### Refused with a reason rather than implemented
+
+`?idxmigrate=`, `?name=` and `?resolver=` on `PUT /dt/{db}/data` answer `400`
+and say why. What migrating an index means is undocumented, and a name or
+resolver changed at runtime would not survive a restart — a rename that reverts
+is worse than no rename.
+
+### Unchanged from 0.11.0
+
+The limitations that release declared all still stand: the identity key is not
+yet invariant to how a molecule was written (17 in 100 000), 22 of 497 877
+written structures are read by other tools as a different molecule and 12 are
+not read at all, and 455 of 497 693 rows cannot be decided inside the matcher's
+budget.
+
 ## 0.11.0 — 2026-08-27
 
 ✅ **No index needs rebuilding.** The format is unchanged at version 3.

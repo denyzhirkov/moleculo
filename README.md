@@ -362,7 +362,10 @@ other way round.
 | `--max-candidates` | `MOLECULO_MAX_CANDIDATES` |
 | `--max-concurrent-searches` | `MOLECULO_MAX_CONCURRENT_SEARCHES` |
 | `--max-queued-searches` | `MOLECULO_MAX_QUEUED_SEARCHES` |
+| `--max-upload-bytes` | `MOLECULO_MAX_UPLOAD_BYTES` |
 | `--enable-reload` | `MOLECULO_ENABLE_RELOAD=1` |
+| `--enable-index-control` | `MOLECULO_ENABLE_INDEX_CONTROL=1` |
+| `--enable-upload` | `MOLECULO_ENABLE_UPLOAD=1` |
 | `--no-search-limit` | `MOLECULO_NO_SEARCH_LIMIT=1` |
 
 ⚠ **It refuses rather than guesses, at startup rather than at the first
@@ -374,7 +377,29 @@ be silent:
 - **a value that does not parse names the field and quotes back what it got**;
 - **a contradiction is refused.** `--no-search-limit` removes every bound, so
   giving it alongside `--max-seconds` means you believe something untrue about
-  your server, and picking a winner would leave you believing it.
+  your server, and picking a winner would leave you believing it. The same rule
+  refuses `--enable-upload` without `--build-dir`: uploading with nowhere to
+  write is a failure found by whoever tries it first rather than by you.
+
+### The three switches that grant a power
+
+⚠ **Everything else this server does is read-only. These are not, they are all
+off by default, and each is its own flag on purpose** — an operator who enabled
+one in an earlier version did not ask for the next.
+
+| switch | what it permits |
+|---|---|
+| `--enable-reload` | `POST /admin/reload` — rescan the roots, build anything new, swap the catalog |
+| `--enable-index-control` | `PUT /dt/{db}/data` — warm or evict an index; `POST /dt/setpriority` — the order databases are listed in |
+| `--enable-upload` | `POST /dt/upload` — write a collection into the build directory |
+
+⚠ **`--enable-upload` is the one to think about twice.** It lets an
+unauthenticated caller write a file to your disk. It is bounded — 2 GB by
+default, `--max-upload-bytes` to change it, and an oversized body is refused
+before it is read into memory — the name is checked against a strict allow-list
+because it becomes a filename, and a name already in use is **refused rather
+than overwritten**. But there is no authentication in front of it, so switch it
+on only where you would also be comfortable with an open port.
 
 ⚠ **`--bind` defaults to `127.0.0.1`, deliberately.** The port is the only
 boundary this product has, so loopback is the default everywhere except where
@@ -825,6 +850,58 @@ moleculo index build vendor.smi ./indexes/vendor \
 
 Reload is off by default: it can put a different database behind a name a client
 is already using, which is an operator's decision rather than a caller's.
+
+### Sending a collection over HTTP
+
+With `--enable-upload` and `--build-dir`, a collection can arrive as a request
+body instead of a file copy:
+
+```sh
+curl -X POST --data-binary @new-catalogue.smi \
+  "http://localhost:8080/dt/upload?name=vendor"
+```
+
+```json
+{"name":"vendor","bytes":184320,"built":false,
+ "message":"stored; it becomes searchable after the next reload"}
+```
+
+⚠ **`"built": false` is the part to read.** The file is stored where a
+hand-copied one goes; it does **not** build here. A 124 M build is hours, and a
+request that runs for hours looks like a hung server to everything watching it —
+so it becomes searchable at the next reload, exactly as a copied file does.
+
+⚠ **A name already in use is refused, never replaced.** Overwriting a collection
+somebody is searching, from a request with no authentication in front of it, is
+not an upload.
+
+### Warming an index before you need it
+
+The first search against a cold index pays for reading it off disk — an hour, at
+124 M. With `--enable-index-control` you can ask for that in advance:
+
+```sh
+curl -X PUT "http://localhost:8080/dt/mydb/data?idxtouch=SUB"   # substructure
+curl -X PUT "http://localhost:8080/dt/mydb/data?idxtouch=SIM"   # similarity
+```
+
+The response is the database's description, including `memInfo`, so you can see
+how much arrived.
+
+⚠ **Warming is advice, not a command** — the kernel may honour it now, later, or
+never, and on a machine short of memory "never" is the usual answer. ⚠ And it is
+one of the few things here by which a careless client hurts *its neighbours*
+rather than itself: warming a 124 M index pulls 10.5 GB into the page cache and
+can push everything else on the machine out of it.
+
+⚠ **`idxevict` works on Linux and cannot work on macOS**, which the server says
+rather than pretending. Dropping a file's pages needs `posix_fadvise`, which
+macOS does not have; the call that looks like it should work, `madvise`, returns
+success and leaves every page exactly where it was. Measured, both platforms.
+
+`?idxmigrate=`, `?name=` and `?resolver=` are refused with a reason: what
+migrating an index means is undocumented, and a name or resolver changed at
+runtime would not survive a restart.
 
 ### Replacing a database
 
