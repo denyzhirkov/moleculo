@@ -1,5 +1,81 @@
 # Changelog
 
+## 0.13.0 — 2026-08-28
+
+✅ **No index needs rebuilding.** The format is unchanged at version 3.
+
+⚠⚠ **Every identity key changes value.** Nothing stores one — identity is
+computed from the index you already have, which is why no rebuild is needed — but
+**if you cached keys of your own, recompute them.** A cached key from 0.12.0 will
+not match a fresh one, and nothing will tell you.
+
+**A query drawn from a molecule finds it, whichever way either was written**
+
+Three fixes to the same underlying thing: whether the answer depends on how the
+SMILES was *typed* rather than on what the molecule *is*.
+
+⚠ **The identity key was reading a coin-toss.** When a ring is aromatic the key
+ignores which way the alternating single/double assignment landed, because that
+is a choice with no chemistry in it. The test for "is this a free choice" was too
+narrow — it asked whether the *bond* was flagged aromatic, when the question is
+whether both its *atoms* are. One molecule in eighty-three spellings changed key
+on nothing but where a double bond happened to fall.
+
+⚠ **A stereocentre's parity was fitted to how a corpus writes molecules.** The
+rule that decides when a three-coordinate sulfur, phosphorus or nitrogen reads as
+its own mirror image was derived twice, both times on molecules as their corpus
+wrote them — and re-spelling the same molecules broke thirteen sulfur centres
+that had been correct. The rule now asks the *molecule* (does this centre carry a
+double bond?) instead of the *string* (is there an `=` after the ring digit?),
+which turns out to be the same question with a spelling-proof answer.
+
+Together: **the same compound spelled two ways gave two identity keys 17 times in
+100 000, and now does so 2 times in 40 000** — see the corrected limitation below.
+
+**Structures we write are more portable**
+
+A ring-fusion bond inside a fused system was marked aromatic when the circuit
+that made the system aromatic does not run through it. Both RDKit and Arthor mark
+that bond single, and the disagreement made our written SMILES read back as a
+different molecule. Over a 497 877-molecule sample, structures another toolkit
+misreads go from **22 to 10**.
+
+### Two corrections to what 0.11.0 and 0.12.0 published
+
+⚠ **"The identity key is not invariant … 17 times in 100 000."** Both halves were
+wrong. The number came from a check that drew **six** spellings per molecule and
+reported a *sampled lower bound* — a figure that cannot be compared between
+releases at all, because which molecules surface depends on the draw. Measured
+properly, at 24 fixed spellings over 40 000 molecules, it is **2**.
+
+⚠ **"22 of 497 877 written structures are read as a different molecule."** Now
+**10**. Twelve were the ring-fusion bond above.
+
+### What is left, and why one half of it is a decision rather than a bug
+
+The two molecules whose key still moves are fullerene cages. On a fused cage the
+ring *count* is stable but the *choice* of rings is not — SSSR is famously
+non-unique — and this build deliberately takes the cyclomatic number rather than
+RDKit's symmetrised SSSR. ⚠ **RDKit symmetrises precisely to make that choice
+canonical.** Changing it would change what a ring means everywhere, including
+under the aromatic divergences the README lists, so it is a decision to take
+rather than a defect to fix.
+
+Unchanged and still declared: **40 in 100 000** molecules are refused in one
+spelling and accepted in another; **455 of 497 693** rows cannot be decided
+inside the matcher's budget; **one molecule in 78 935** leaves `fmt=sdf` as a
+different isomer.
+
+### Inside, where nothing should be visible
+
+Two files were split along the lines of what changes them — rendering an answer
+is a different job from deciding it, and counting π electrons is a different job
+from perceiving a ring. ⚠ **Two further splits were considered and declined**,
+because the sections of an MDL record are that format's own structure and
+extracting them would scatter the reasoning that keeps it checkable. Behaviour is
+unchanged, and this release's verification was run against that claim rather than
+around it.
+
 ## 0.12.0 — 2026-08-27
 
 ✅ **No index needs rebuilding.** The format is unchanged at version 3.

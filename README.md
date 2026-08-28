@@ -1285,19 +1285,32 @@ Everything else on the list does something this does not.
   **2 440 588 candidates and standardises one**. Rejecting still costs a parse,
   so the loop carries the same wall clock a search does and benzene comes back
   at the deadline with `"complete": false`. Use `/search` for that question.
-- **The identity key is not yet invariant to how a molecule was written.**
-  Hand `/dt/{db}/identity` the same compound spelled two different ways and
-  **17 times in 100 000 you get two different keys**, which means the endpoint
-  can answer *"we do not hold this"* about a compound the collection holds.
-  Measured over 100 000 PubChem molecules in 599 544 spellings; the three
-  reference corpora read **100.0000%** over 179 304 strings, so this needs a
-  collection with the awkward chemistry in it to show at all. Three causes,
-  all identified: cyclic sulfoxides, fullerene cages, and small fused ring
-  systems. ⚠ **A further 40 in 100 000 are refused in one spelling and accepted
-  in another** — the same molecule, a `400` or a `200` depending on where the
-  author started the string. Both are being worked on; neither affects
-  substructure, SMARTS, similarity or formula search, whose hit sets do not
-  depend on the key.
+- **The identity key is not yet invariant to how a molecule was written, on two
+  molecules in forty thousand.** Hand `/dt/{db}/identity` the same compound
+  spelled two different ways and **2 in 40 000 give two different keys**, which
+  means the endpoint can answer *"we do not hold this"* about a compound the
+  collection holds. Measured over 40 000 PubChem molecules in 958 143 spellings,
+  24 apiece.
+
+  ⚠ **This entry said 17 in 100 000 until 0.13.0, and both halves of that were
+  wrong.** The number came from a check that drew **six** spellings per molecule
+  and reported a *sampled lower bound* — a figure that cannot be compared
+  between releases, because which molecules surface depends on the draw. Five of
+  the causes it pointed at were one defect and are fixed; what is left is two
+  fullerene cages.
+
+  ⚠ **Those two are not a bug so much as a price.** On a fused cage the ring
+  count is stable but the *choice* of rings is not — SSSR is famously non-unique
+  there — and this build deliberately takes the cyclomatic number rather than
+  RDKit's symmetrised SSSR. RDKit symmetrises precisely to make the choice
+  canonical. Changing that would change what a ring means everywhere, including
+  under the aromatic divergences listed below, so it is a decision rather than a
+  fix.
+
+  ⚠ **A further 40 in 100 000 are refused in one spelling and accepted in
+  another** — the same molecule, a `400` or a `200` depending on where the author
+  started the string. That one is untouched. Neither affects substructure,
+  SMARTS, similarity or formula search, whose hit sets do not depend on the key.
 - **Some rows cannot be decided, and now they say so instead of counting as
   misses.** Subgraph isomorphism is NP-complete, so the matcher abandons a
   molecule after a fixed amount of work rather than hanging your build on one
@@ -1310,10 +1323,11 @@ Everything else on the list does something this does not.
   not offered as a fix, because it trades a silent wrong answer for a slow one.
 - **Some structures we hand back as SMILES are read by other tools as a
   different molecule.** `fmt=smiles` and the highlight strings are consumed by
-  whatever you pipe them into, and over 497 877 PubChem molecules **22 come back
-  through RDKit as a different graph and 12 it will not read at all** — 0.007%,
-  all of them fused ring systems where this build marks a ring-fusion bond
-  aromatic and both RDKit and Arthor mark it single. ⚠ **The molecule stored and
+  whatever you pipe them into, and over 497 877 PubChem molecules **10 come back
+  through RDKit as a different graph and 12 it will not read at all** — 0.004%.
+  ⚠ **This said 22 until 0.13.0**: twelve of them were a ring-fusion bond marked
+  aromatic where both RDKit and Arthor mark it single, and that is fixed. The ten
+  left are porphyrin-type macrocycles, a different mechanism. ⚠ **The molecule stored and
   searched here is correct**; it is the written form that is not portable. If
   you are round-tripping results through another toolkit, `fmt=sdf` does not
   have this problem.
