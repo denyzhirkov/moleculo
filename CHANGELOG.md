@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.14.1 — 2026-08-28
+
+✅ **No index needs rebuilding.** The format is unchanged at version 3. An index
+built by any earlier version opens, and this release does not change a single
+byte of one — that was measured on 21 923 molecules, file by file, not argued.
+
+⚠ **If you hold SDF files from 0.14.0 or earlier, export them again.** This is
+the third correction in two releases to what a reader takes out of an SDF record,
+and the largest.
+
+**An SDF record no longer claims unpaired electrons an atom does not have.**
+
+This build expected a negatively charged phosphorus, sulfur or iodine to reach a
+*higher* valence than it actually does, and wrote the shortfall down as a
+radical. The consequence: **every iodide counter-ion this project has ever
+exported carried a triplet radical — 1 189 records in 100 000.** A reader is told
+those atoms have unpaired electrons. They do not.
+
+Measured atom for atom against RDKit over 100 000 PubChem molecules: records
+making a claim no atom supports go from **1 189 to 0**, agreement from 98 239 to
+**99 386**, and nothing that was right became wrong.
+
+⚠ **Nothing could see this until something looked for it.** The check this
+project runs on SDF output compares the molecule a reader gets back, and RDKit
+renders an iodide with unpaired electrons to exactly the same string as one
+without. The defect was invisible to every measurement taken here until a
+per-atom comparison was written.
+
+**And the last three structures that came back as a different molecule are
+fixed.** They were the phosphide anion `PH2-`, the same expectation seen from the
+other side. **Structures that come back as a different molecule are now 0 in
+100 000**, down from 15 before 0.14.0.
+
+**What still does not work.**
+
+- **`F[Kr]F` cannot be read back by RDKit.** We write it correctly; its valence
+  model declines krypton difluoride.
+- **Radical state on a metal is not modelled here at all.** 601 records in
+  100 000 state fewer unpaired electrons than RDKit does, every one of them on an
+  atom outside the organic subset. That is a gap, not a wrong answer.
+- Everything the 0.14.0 notes list as outstanding is still outstanding.
+
 ## 0.14.0 — 2026-08-28
 
 ✅ **No index needs rebuilding.** The format is unchanged at version 3, and

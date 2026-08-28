@@ -1331,36 +1331,39 @@ Everything else on the list does something this does not.
   left are porphyrin-type macrocycles, a different mechanism. ⚠ **The molecule stored and
   searched here is correct**; it is the written form that is not portable. If
   you are round-tripping results through another toolkit, `fmt=sdf` carries the
-  structure faithfully for all but **3** molecules in 100 000 — see the next
-  entry, ⚠ **which until this release said `fmt=sdf` "does not have this
-  problem" and was wrong twice over.**
-- **`fmt=sdf` has its own residue, and one of the two halves is fixed here.**
-  ⚠ **Until this release an SDF record asserted a double-bond geometry your input
-  never stated — 9 751 records in 100 000.** A molfile has no "unspecified" in
-  its coordinates: a reader derives cis or trans from where the atoms sit, so the
-  drawing answered a question nobody asked. The format's own way of saying it —
-  the crossed double bond, bond stereo flag 3 — is now written wherever the
-  structure leaves the geometry open, matching what RDKit writes bond for bond.
-  **That count is 0.** ⚠ **If you cached SDF records from an earlier release,
-  re-export them**: the coordinates are unchanged, but a geometry you read out of
-  them may have been ours rather than yours.
+  structure faithfully — see the next entry for what that took.
+- **`fmt=sdf` had three defects and all three are now closed.** ⚠ **Until
+  0.14.0 this README said it "does not have this problem", and it had them.**
 
-  ⚠ **The other half of that residue is fixed here too.** 15 molecules in
-  100 000 came back as a different graph because an SDF record never stated the
-  atom's total valence, so a reader applied its own default — `C[SnH3]` came
-  back with one hydrogen instead of three, and `[Te][Te]` came back with one
-  each where it had none. The valence is now written for every atom outside the
-  organic subset, where a reader has nothing reliable to derive it from; carbon,
-  nitrogen and oxygen always did reconstruct correctly and are untouched.
-  **12 of the 15 round-trip now.**
+  **A record no longer asserts a double-bond geometry your input never stated.**
+  A molfile has no "unspecified" in its coordinates — a reader derives cis or
+  trans from where the atoms sit — so the drawing answered a question nobody
+  asked, on **9 751 records in 100 000**. The format's own way of saying
+  "either" is the crossed double bond, and it is now written wherever the
+  structure leaves the geometry open, matching RDKit bond for bond. Fixed in
+  0.14.0; the count is **0**.
 
-  **3 remain**, all of them the phosphide anion `[PH2-]`, and the cause is not
-  the writer: our valence model expects four hydrogens on a negatively charged
-  phosphorus where RDKit expects two, so the two it has are reported as unpaired
-  electrons. Fixing that touches how every charged atom is read, not how it is
-  written, so it is tracked separately rather than patched here. ⚠ One further
-  record RDKit refuses to read is `F[Kr]F`, which we write correctly and its own
-  valence model declines.
+  **A record now states the valence of an atom whose default a reader cannot
+  guess.** 15 molecules in 100 000 came back as a *different molecule* without
+  it, and the reader's guess was wrong in both directions — `C[SnH3]` came back
+  with one hydrogen instead of three, `[Te][Te]` with one each where it had none.
+  Fixed in 0.14.0 and 0.14.1; **structures that come back as a different molecule
+  are now 0 in 100 000.**
+
+  **A record no longer claims unpaired electrons an atom does not have.** This
+  build expected a negatively charged phosphorus, sulfur or iodine to reach a
+  *higher* valence than it does, so the shortfall was written as a radical:
+  **every iodide counter-ion we have ever exported carried one — 1 189 records
+  in 100 000.** Fixed in 0.14.1. Per atom against RDKit, claims no atom supports
+  go from **1 189 to 0**, and nothing that was right became wrong.
+
+  ⚠ **If you hold SDF files from 0.14.0 or earlier, export them again.** The
+  coordinates never changed; what a reader takes from them did, three times.
+
+  ⚠ One record RDKit still refuses to read is `F[Kr]F`, which we write correctly
+  and its own valence model declines. Radical state on a *metal* is still not
+  modelled here at all — 601 records in 100 000 state fewer unpaired electrons
+  than RDKit does, every one of them on an atom outside the organic subset.
 - **Sharding is within one machine, not across machines.** A database may be
   built as many shards and is searched across all of them, but every shard has
   to be on the box serving it. Several databases can still be searched in one
