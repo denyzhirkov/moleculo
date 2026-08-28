@@ -1322,15 +1322,45 @@ Everything else on the list does something this does not.
   there is — 455 of 497 693 PubChem molecules exceed the budget. Raising it is
   not offered as a fix, because it trades a silent wrong answer for a slow one.
 - **Some structures we hand back as SMILES are read by other tools as a
-  different molecule.** `fmt=smiles` and the highlight strings are consumed by
-  whatever you pipe them into, and over 497 877 PubChem molecules **10 come back
+  different molecule.** The `SMILES` column every result carries — in `json`,
+  `tsv` and `csv` alike — is consumed by whatever you pipe it into, and over
+  497 877 PubChem molecules **10 come back
   through RDKit as a different graph and 12 it will not read at all** — 0.004%.
   ⚠ **This said 22 until 0.13.0**: twelve of them were a ring-fusion bond marked
   aromatic where both RDKit and Arthor mark it single, and that is fixed. The ten
   left are porphyrin-type macrocycles, a different mechanism. ⚠ **The molecule stored and
   searched here is correct**; it is the written form that is not portable. If
-  you are round-tripping results through another toolkit, `fmt=sdf` does not
-  have this problem.
+  you are round-tripping results through another toolkit, `fmt=sdf` carries the
+  structure faithfully for all but **3** molecules in 100 000 — see the next
+  entry, ⚠ **which until this release said `fmt=sdf` "does not have this
+  problem" and was wrong twice over.**
+- **`fmt=sdf` has its own residue, and one of the two halves is fixed here.**
+  ⚠ **Until this release an SDF record asserted a double-bond geometry your input
+  never stated — 9 751 records in 100 000.** A molfile has no "unspecified" in
+  its coordinates: a reader derives cis or trans from where the atoms sit, so the
+  drawing answered a question nobody asked. The format's own way of saying it —
+  the crossed double bond, bond stereo flag 3 — is now written wherever the
+  structure leaves the geometry open, matching what RDKit writes bond for bond.
+  **That count is 0.** ⚠ **If you cached SDF records from an earlier release,
+  re-export them**: the coordinates are unchanged, but a geometry you read out of
+  them may have been ours rather than yours.
+
+  ⚠ **The other half of that residue is fixed here too.** 15 molecules in
+  100 000 came back as a different graph because an SDF record never stated the
+  atom's total valence, so a reader applied its own default — `C[SnH3]` came
+  back with one hydrogen instead of three, and `[Te][Te]` came back with one
+  each where it had none. The valence is now written for every atom outside the
+  organic subset, where a reader has nothing reliable to derive it from; carbon,
+  nitrogen and oxygen always did reconstruct correctly and are untouched.
+  **12 of the 15 round-trip now.**
+
+  **3 remain**, all of them the phosphide anion `[PH2-]`, and the cause is not
+  the writer: our valence model expects four hydrogens on a negatively charged
+  phosphorus where RDKit expects two, so the two it has are reported as unpaired
+  electrons. Fixing that touches how every charged atom is read, not how it is
+  written, so it is tracked separately rather than patched here. ⚠ One further
+  record RDKit refuses to read is `F[Kr]F`, which we write correctly and its own
+  valence model declines.
 - **Sharding is within one machine, not across machines.** A database may be
   built as many shards and is searched across all of them, but every shard has
   to be on the box serving it. Several databases can still be searched in one

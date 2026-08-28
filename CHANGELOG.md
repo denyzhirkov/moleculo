@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.14.0 — 2026-08-28
+
+✅ **No index needs rebuilding.** The format is unchanged at version 3, and
+nothing about how a molecule is *stored* or *searched* moved in this release.
+
+⚠ **If you have SDF files exported by an earlier version, export them again.**
+Two things an SDF record used to say were not in your input, and both are fixed.
+The coordinates are the same; what changed is what a reader takes from them.
+
+**An SDF record no longer claims a double-bond geometry you did not state.**
+
+A molfile has no way to shrug in its coordinates: a reader works out cis or trans
+from where the atoms sit, so the drawing answered a question nobody asked. Over
+100 000 PubChem molecules, **9 751 records came back through RDKit carrying a
+descriptor their input never wrote** — nearly one in ten. The format does have a
+way to say "either" — the crossed double bond — and it is now written wherever
+the structure leaves the geometry open, matching RDKit bond for bond. That count
+is **0**, and agreement on molecules with stereochemistry goes from 93.3% to
+**99.8%**.
+
+⚠ This mattered more than its size because `fmt=sdf` is what this README
+recommends for round-tripping results through another toolkit, *precisely
+because* `fmt=smiles` has a portability problem. The escape hatch was the leakier
+of the two.
+
+**An SDF record now states the valence of an atom a reader cannot guess.**
+
+Fifteen molecules in 100 000 came back as a *different molecule* because the
+total valence was never written down, so the reader applied its own default —
+and the default was wrong in both directions. `C[SnH3]` came back with one
+hydrogen instead of three; `[Te][Te]` came back with one hydrogen each where it
+had none. Tin, thallium, tellurium, silicon, manganese, arsenic and iridium.
+**Twelve of the fifteen now round-trip.**
+
+Carbon, nitrogen and oxygen were never affected — a reader reconstructs those
+correctly, which is why ordinary organic chemistry has always been fine here and
+why this took thirteen releases to surface.
+
+**What still does not work, and one correction.**
+
+⚠ **The README used to say `fmt=sdf` "does not have this problem".** It had two.
+That line is corrected rather than quietly rewritten.
+
+- **Three molecules in 100 000 still come back different**, all of them the
+  phosphide anion `[PH2-]`. The cause is not the writer: this build expects four
+  hydrogens on a negatively charged phosphorus where RDKit expects two, so the
+  two it has are reported as unpaired electrons. Fixing that changes how every
+  charged atom is *read*, not how it is written, so it is tracked separately.
+- **`F[Kr]F` cannot be read back by RDKit.** We write it correctly; its valence
+  model declines krypton difluoride.
+- Everything the 0.13.0 notes list as outstanding is still outstanding, including
+  the two fullerene cages whose identity key moves with the spelling.
+
 ## 0.13.0 — 2026-08-28
 
 ✅ **No index needs rebuilding.** The format is unchanged at version 3.
