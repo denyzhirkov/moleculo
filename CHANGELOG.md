@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.14.2 — 2026-08-29
+
+✅ **No index needs rebuilding**, and nothing about how a molecule is stored or
+searched moved. This release is about answers the previous ones gave that they
+should not have given.
+
+⚠ **One thing that used to answer now refuses.** If you negate a search — `qopts=N`
+— over a collection holding a row the matcher could not decide, you get an error
+instead of a result. That is deliberate, and the paragraph below says why.
+
+**A negated search no longer hands back rows it cannot vouch for.**
+
+The matcher abandons a molecule that is too branched to decide inside its work
+budget, and reports those rows apart, as `undecided`. But a negated search asks
+for the *complement* — the rows your query does **not** occur in — and an
+undecided row was being counted as a non-match, so it was returned to you as a
+row your query is absent from. It might well contain it; nobody looked.
+
+That is a wrong row in your results, not a missing one, which is why the answer
+is now a refusal naming how many rows it could not decide. ⚠ **Raising the work
+budget is not offered as the fix** — it trades a silent wrong answer for a slow
+one, and the bound is what stops an index build hanging on a single molecule. Run
+the search without `qopts=N`: the positive answer reports the same rows as
+`undecided` rather than guessing about them.
+
+**`identity` no longer says its answer is complete when it is not.**
+
+`/dt/{db}/identity` answers *do you already hold this compound*. If a candidate
+row could not be decided, its key was never computed and it could never appear in
+`matches` — and the response still said `"complete": true`. It now says `false`,
+which is the difference between *we looked and it is not here* and *we could not
+finish looking*.
+
+**And the tautomer count in `explain` no longer claims to be complete when a rule
+was abandoned.**
+
+`explain.tautomerFormsComplete` was set `false` only when the form limit was
+reached. A rule whose search ran out of budget, or hit the per-rule match cap,
+left the field saying `true` over an enumeration that had been cut off. A field
+named *complete* is the worst place for that.
+
+**What did not change.**
+
+- No format bump, no migration, no rebuild.
+- Hit sets, counts and rendering are all unmoved for every search that did not
+  involve an undecided row — which, measured, is essentially all of them: 30
+  rows in ten million cannot decide *themselves*, the easiest query there is.
+
 ## 0.14.1 — 2026-08-28
 
 ✅ **No index needs rebuilding.** The format is unchanged at version 3. An index

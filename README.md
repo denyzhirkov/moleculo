@@ -1119,8 +1119,9 @@ this build has spent its effort:
 |---|---|---|
 | a substructure count runs past 20 000 | caps and reports `hasMore: false` | converges, however long it takes |
 | a limit cut the search short | no signal in the response | says so in `warning`, **and** gives the number in `verified` |
-| a molecule is too branched to decide | counted as a non-match | counted apart, in `undecided` |
+| a molecule is too branched to decide | counted as a non-match | counted apart, in `undecided` — and it now reaches `identity` and the tautomer count too, not just search |
 | you negate a search whose count is a floor | answers | **refused** — the complement of a floor contains matching rows permanently |
+| you negate a search over a row nobody could decide | counted as a non-match, so it is **returned to you as a row your query is absent from** | **refused**, naming how many |
 | a similarity search is cut short | answers | **refused with `503`** rather than returning a histogram biased by what it missed |
 | nothing matched | empty | `explain` says what was absent, and how many tautomeric forms your query has |
 | you ask "do we already hold this?" | ⚠ **no such endpoint** | `/dt/{db}/identity`, saying how each row merged and what it set aside |
@@ -1285,12 +1286,20 @@ Everything else on the list does something this does not.
   **2 440 588 candidates and standardises one**. Rejecting still costs a parse,
   so the loop carries the same wall clock a search does and benzene comes back
   at the deadline with `"complete": false`. Use `/search` for that question.
-- **The identity key is not yet invariant to how a molecule was written, on two
-  molecules in forty thousand.** Hand `/dt/{db}/identity` the same compound
+- **The identity key is not yet invariant to how a molecule was written, and on
+  fullerene cages it essentially never is.** Hand `/dt/{db}/identity` the same compound
   spelled two different ways and **2 in 40 000 give two different keys**, which
   means the endpoint can answer *"we do not hold this"* about a compound the
-  collection holds. Measured over 40 000 PubChem molecules in 958 143 spellings,
-  24 apiece.
+  collection holds.
+
+  ⚠⚠ **That number is how often the affected molecules turn up in a random
+  sample, not how often the defect fires.** Measured on the molecules it is
+  actually about — every bare carbon cage in a 10 million-molecule slice of
+  PubChem, 22 of them, at 24 spellings each — **21 of 22 give more than one key,
+  and one gives thirteen.** The single exception is C60, whose symmetry makes
+  the choice below irrelevant; break that symmetry, as C70 and every
+  functionalised fullerene do, and the key moves. If your collection is
+  fullerene chemistry, treat `identity` as unavailable rather than rare.
 
   ⚠ **This entry said 17 in 100 000 until 0.13.0, and both halves of that were
   wrong.** The number came from a check that drew **six** spellings per molecule
@@ -1324,12 +1333,20 @@ Everything else on the list does something this does not.
 - **Some structures we hand back as SMILES are read by other tools as a
   different molecule.** The `SMILES` column every result carries — in `json`,
   `tsv` and `csv` alike — is consumed by whatever you pipe it into, and over
-  497 877 PubChem molecules **10 come back
-  through RDKit as a different graph and 12 it will not read at all** — 0.004%.
-  ⚠ **This said 22 until 0.13.0**: twelve of them were a ring-fusion bond marked
-  aromatic where both RDKit and Arthor mark it single, and that is fixed. The ten
-  left are porphyrin-type macrocycles, a different mechanism. ⚠ **The molecule stored and
-  searched here is correct**; it is the written form that is not portable. If
+  the first 500 000 lines of PubChem — 499 971 round-trip **exactly**, 27 are
+  molecules this build refuses to read at all, and **not one comes back as a
+  different molecule.**
+
+  ⚠⚠ **This entry said "10 as a different graph and 12 unreadable" until
+  0.14.2, and that figure cannot be rebuilt.** It was measured over "a 497 877-
+  molecule PubChem sample" and nothing recorded how that sample was drawn; no
+  prefix of the corpus reproduces it, and the same measurement on the 0.13.0
+  build gives the same zero. The defect may well have been real when it was
+  written down — what is certain is that **a number whose population nobody
+  recorded cannot be checked, kept or retired.** Samples are now prefixes,
+  built by `tools/oracle/sample.sh`, and every figure names its own. ⚠ **The
+  molecule stored and searched here is correct**; it is the written form that is
+  at issue. If
   you are round-tripping results through another toolkit, `fmt=sdf` carries the
   structure faithfully — see the next entry for what that took.
 - **`fmt=sdf` had three defects and all three are now closed.** ⚠ **Until
