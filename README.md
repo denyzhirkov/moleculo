@@ -669,6 +669,25 @@ which is what both Arthor and `RDKit` do by default. Asked on a 3 004-molecule
 collection, Arthor answers 212 for a chiral query and 212 for its mirror;
 `RDKit`'s default answers 207 and 207. `G` is how you say you meant the wedge.
 
+⚠ **A search now rejects rows before it decodes them, and that needs an index
+built by 0.16.0.** Every shard carries a small index of the substructure
+features its molecules hold, and a query that must contain a feature skips every
+row without it. Measured over 199 977 rows and the 56 corpus queries, with every
+hit set asserted identical either way: four queries get a plan and all four win
+— `S(=O)(=O)N` reads **3 801 candidates for 3 712 real hits**, `FC(F)F` 4 673
+for 3 904, `c1cn[nH]c1` 3 264 for 405, and `c-c` is exact at 10 724.
+
+⚠ **The other 52 queries are refused a plan and scan, which is correct.** Most
+are bracket SMARTS the planner cannot read, and they name things too common to
+be worth skipping. ⚠ **A fused ring is unscreenable by construction** —
+naphthalene's short paths are the same runs of aromatic carbon as benzene's — so
+`c1ccc2ccccc2c1` scans however your index was built.
+
+⚠ **An index built before 0.16.0 opens, searches and answers correctly. It only
+scans.** What the feature strings mean changed, the shard records which meaning
+it was built with, and a planner that does not recognise it declines rather than
+guessing. Rebuild when convenient; nothing breaks if you do not.
+
 ### SMARTS — "this nitrogen, in this environment"
 
 The query is SMARTS, for when SMILES is not specific enough: an aromatic
@@ -1306,16 +1325,26 @@ Everything else on the list does something this does not.
   wrong.** The number came from a check that drew **six** spellings per molecule
   and reported a *sampled lower bound* — a figure that cannot be compared
   between releases, because which molecules surface depends on the draw. Five of
-  the causes it pointed at were one defect and are fixed; what is left is two
-  fullerene cages.
+  the causes it pointed at were one defect and are fixed; what is left is
+  **fullerene chemistry as a class**, which a random sample of ordinary
+  molecules will almost never contain.
 
-  ⚠ **Those two are not a bug so much as a price.** On a fused cage the ring
-  count is stable but the *choice* of rings is not — SSSR is famously non-unique
-  there — and this build deliberately takes the cyclomatic number rather than
-  RDKit's symmetrised SSSR. RDKit symmetrises precisely to make the choice
-  canonical. Changing that would change what a ring means everywhere, including
-  under the aromatic divergences listed below, so it is a decision rather than a
-  fix.
+  ⚠ **This is a price rather than a bug, and both sides of it are measured.**
+  On a fused cage the ring *count* is stable — always the cyclomatic number, and
+  always right — but the *choice* of rings is not, which is what SSSR's
+  non-uniqueness means there. Asked as a signature that does not depend on atom
+  numbering, over the 22 cages at 24 spellings each: **this build's ring basis
+  moves on 22 of 22, and keeping every shortest cycle through every ring bond —
+  what RDKit's symmetrisation is built on — moves on 0 of 22.** So the stable
+  definition exists and we do not use it.
+
+  ⚠ **What using it would cost is why this is a decision and not a fix.** The
+  ring count would change on **138 503 of 9 999 789 PubChem molecules — 1.39%**
+  — and with it every answer built on ring perception, including the aromatic
+  divergences listed below. On C60 the two definitions read 31 rings and 32:
+  the cyclomatic number against the 32 faces, which is Euler's relation and not
+  a defect in either. Until that decision is taken, this limitation stands as
+  written.
 
   ⚠ **A further 40 in 100 000 are refused in one spelling and accepted in
   another** — the same molecule, a `400` or a `200` depending on where the author

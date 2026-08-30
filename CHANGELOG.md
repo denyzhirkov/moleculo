@@ -1,5 +1,86 @@
 # Changelog
 
+## 0.16.0 — 2026-08-30
+
+⚠ **Rebuild your indexes when convenient — nothing breaks if you do not.** The
+format is unchanged at version 3 and every existing index opens, searches and
+answers correctly. What changed is that a substructure search can now **reject
+rows before decoding them**, and the shard has to have been built by this
+version for it to happen: what the stored feature strings mean changed, the
+shard records which meaning it was built with, and a planner that does not
+recognise it declines rather than guessing. An older index only scans.
+
+**A substructure search skips rows it can prove cannot match.** Every shard
+already carried an index of the features its molecules hold; until this release
+the planner could not build a plan from an ordinary query, so nothing was ever
+skipped and every row was decoded and matched. Measured over 199 977 rows and
+the 56 corpus queries, with every hit set asserted identical either way: four
+queries get a plan and all four win — `S(=O)(=O)N` reads **3 801 candidates for
+3 712 real hits**, `FC(F)F` 4 673 for 3 904, `c1cn[nH]c1` 3 264 for 405, and
+`c-c` is exact at 10 724.
+
+⚠ **Two defects, one on top of the other, and the second was only reachable once
+the first was fixed.** A requirement needed a *concrete bond*, and every bond an
+ordinary SMILES query writes is implicit — so `S(=O)(=O)N` could name no feature
+at all and the planner returned nothing on **56 of 56** corpus queries, for the
+life of the project. The first plan it built then dropped **17 real hits of
+3 712**, because formal charge was in a molecule's stored feature while no query
+can ask about a charge: every sulfonamide spelled `[N-]` was invisible. Charge is
+gone from the vocabulary — the knob that carried it was deleted rather than
+defaulted off, because a setting with an unsound position should not exist.
+
+⚠ **What still scans, and it is not a budget question.** The other 52 corpus
+queries are refused a plan and that is correct: most are bracket SMARTS the
+planner cannot read, and they name things too common to be worth skipping. **A
+fused ring is unscreenable by construction** — naphthalene's short paths are the
+same runs of aromatic carbon as benzene's — so `c1ccc2ccccc2c1` scans however
+your index was built.
+
+**An abandoned search is no longer reported as an absent match.** The matcher
+abandons a molecule after a step budget, correctly, since an index build must not
+hang on one row. Two paths still folded *we gave up* into *there is nothing
+here*:
+
+- **A highlight.** A hit with no highlight meant both *we looked and there is
+  nothing to draw* and *we ran out of steps*. The rows were always hits and still
+  are; the answer's `warning` now says, in its own sentence, how many hits on the
+  page have no highlight because the search hit its budget. The `highlights`
+  array keeps exactly the shape it had.
+- ⚠ **The identity key, which is the one that could return a wrong answer.**
+  `/dt/{db}/identity` standardises a molecule by searching for the patterns of
+  the rules that might apply. A search that was abandoned came back
+  indistinguishable from a rule that does not apply, so the rule was skipped and
+  the molecule keyed as though it had been checked — and a quietly different key
+  answers *"we do not hold this"* about a compound the collection holds.
+  Standardisation now **refuses** that molecule instead, naming what it could not
+  decide.
+
+⚠ **This has never fired on any collection we can build, and that is said rather
+than glossed.** Instrumented over `world-drugs`, `mcule`, `real-space` and
+500 000 PubChem molecules: **42 million searches, zero abandoned**, the deepest
+1 332 steps against a budget of 1 000 000. It is fixed because the class of
+answer was wrong, not because anyone saw a wrong key. Control: 122 423 molecules
+re-keyed either side of the change, **not one key moved**.
+
+**The identity limitation on fullerenes is now stated with its price.** The
+README said the key moves for "2 in 40 000" molecules, which reads as rare and
+nearly fixed. That is how often a fullerene lands in a random forty thousand, not
+how often the defect fires: on the population it is about — 22 bare carbon cages
+at 24 spellings each — **21 of 22 give more than one key** and one gives
+thirteen. If your collection is fullerene chemistry, treat `/dt/{db}/identity` as
+unavailable rather than rare. The alternative is now measured too: the ring
+*count* on a fused cage is stable, the *choice* of rings is not, and adopting the
+stable definition would change the ring count on **1.39% of PubChem** and with it
+every answer built on ring perception. That is a decision nobody has taken, so
+the limitation stands.
+
+**Unchanged and still true.** No index format bump. Hit sets, counts and every
+search type answer exactly as they did — the only search-visible additions are
+the new warning sentence and the standardisation refusal that has never
+triggered. The 202 documented aromatic divergences, the 40 in 100 000 spellings
+refused where another spelling is accepted, and the rows too branched to decide
+are all where 0.15.0 left them.
+
 ## 0.15.0 — 2026-08-30
 
 ⚠ **Rebuild your indexes when convenient — nothing breaks if you do not.**
