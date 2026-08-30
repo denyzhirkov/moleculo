@@ -1125,6 +1125,7 @@ this build has spent its effort:
 | a similarity search is cut short | answers | **refused with `503`** rather than returning a histogram biased by what it missed |
 | nothing matched | empty | `explain` says what was absent, and how many tautomeric forms your query has |
 | you ask "do we already hold this?" | ⚠ **no such endpoint** | `/dt/{db}/identity`, saying how each row merged and what it set aside |
+| your collection holds a wildcard atom and you search by formula | the row is unreachable — the wildcard is not in the formula | the formula carries it, `C7H6*NO`, and `*3` asks for exactly three |
 | your query drew stereochemistry | ignored | ignored by default, honoured on `qopts=G` |
 
 ⚠ **Every row of that table is a *reported fact*, not a benchmark**, and several
@@ -1395,6 +1396,15 @@ Everything else on the list does something this does not.
   the other 172. Arthor is stable there and agrees with this build. The residue
   that is genuinely ours is **nine molecules** — two aromatic-boron rings, two
   fullerene adducts at one atom each, five one-offs.
+
+  ⚠ **That entry counts aromatic *atoms*. Bonds are counted separately and were
+  worse until 0.15.0.** Over 398 040 ring-fusion bonds in 500 000 PubChem
+  molecules, **9 now disagree with RDKit where 145 did** — a bond can lie inside
+  one aromatic ring combination and on the edge of another, and this build used
+  to decide from the first combination it found and never revisit. 185 further
+  disagreements are the same furan-in-a-macrocycle cases described above, where
+  RDKit's answer is not a function of the molecule, and are left alone
+  deliberately.
 - **Only three quarters of a *single shard's* build is parallel.** The screening
   passes use every core; reading the input, merging the posting runs and writing
   the fingerprints do not. Measured on ten cores at 124 M: the parallel passes

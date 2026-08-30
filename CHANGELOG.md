@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.15.0 — 2026-08-30
+
+⚠ **Rebuild your indexes when convenient — nothing breaks if you do not.**
+The format is unchanged at version 3 and every existing index opens and answers.
+But this release changes which bonds are perceived aromatic, and an index stores
+that perception rather than recomputing it, so a shard built before 0.15.0 keeps
+the older answer on **about one row in five thousand five hundred**. Measured
+over 500 000 PubChem molecules: 90 rows differ, on 144 bond flags, and **not one
+atom flag**. Only a query that asks about bond aromaticity can tell.
+
+**A fused ring system marks its aromatic bonds the way the reference does.**
+
+Aromaticity in a system of several fused rings is decided over *combinations* of
+those rings, and a bond that lies inside one aromatic combination can lie on the
+edge of another. This build used to decide once, from the first pair it found,
+and never revisit — so such a bond was recorded as not aromatic even when a
+second combination put it on a genuine circuit.
+
+Measured against RDKit over 398 040 ring-fusion bonds in 500 000 molecules,
+disagreements in the affected class go from **145 to 9**. Over the 1 527
+molecules that hold such a bond, full agreement goes from 1 459 to **1 521**.
+Nothing else moved: the documented macrocyclic divergences stay at 185, three
+committed corpora stay at 100.000%, the SMILES round trip over 500 000 molecules
+is still exact, and 168 corpus-query hit sets are byte-identical.
+
+⚠ **Aromatic *atoms* did not change**, here or anywhere in that measurement. If
+you have been reading atom aromaticity, this release is invisible to you.
+
+**A formula query can now find a molecule with a wildcard atom in it.**
+
+A wildcard — `*` in SMILES, the atom that stands for anything — was dropped from
+the formula this build writes and refused in the formula it reads. So
+`*C(=O)Nc1ccccc1` was described as `C7H6NO`, which is a formula for a different
+molecule, and no formula query could reach that row, not even one written from
+the row itself. The formula now carries it, `C7H6*NO`, in the position RDKit
+uses; `*3` asks for exactly three wildcard atoms, the same way `C3` asks for
+exactly three carbons.
+
+⚠ **If your collections are ordinary molecule files this changes nothing** —
+there is not one wildcard atom in any corpus this project measures against. It
+matters for Markush structures and R-group catalogues.
+
+**What still does not work.**
+
+- The two fullerene cages whose identity key depends on how they were written
+  are still there, and on fullerene chemistry generally the endpoint remains
+  unreliable — 21 of 22 bare carbon cages give more than one key.
+- Nine ring-fusion bonds in 398 040 still disagree with RDKit, down from 145.
+- Everything the 0.14.2 notes list as outstanding is still outstanding.
+
 ## 0.14.2 — 2026-08-29
 
 ✅ **No index needs rebuilding**, and nothing about how a molecule is stored or
