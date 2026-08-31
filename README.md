@@ -1346,10 +1346,16 @@ Everything else on the list does something this does not.
   a defect in either. Until that decision is taken, this limitation stands as
   written.
 
-  ⚠ **A further 40 in 100 000 are refused in one spelling and accepted in
-  another** — the same molecule, a `400` or a `200` depending on where the author
-  started the string. That one is untouched. Neither affects substructure,
-  SMARTS, similarity or formula search, whose hit sets do not depend on the key.
+  ⚠ **A further 45 in 500 000 were refused in one spelling and accepted in
+  another, and 39 of them are fixed in 0.17.0.** The class was aryl carbanions —
+  phenyl anions, Grignards, aryllithiums — which PubChem writes Kekulé
+  (`C1=CC=[C-]C=C1`), where we read them, and which RDKit writes aromatic
+  (`[c-]1ccccc1`), where we returned a `400`. One structure, two answers, decided
+  by how it was drawn. **Six remain**, and they are three different things: an
+  aromatic ring holding a triple bond, aromatic silicon, and an aromatic borate.
+
+  Neither affects substructure, SMARTS, similarity or formula search, whose hit
+  sets do not depend on the key.
 - **Some rows cannot be decided, and now they say so instead of counting as
   misses.** Subgraph isomorphism is NP-complete, so the matcher abandons a
   molecule after a fixed amount of work rather than hanging your build on one
