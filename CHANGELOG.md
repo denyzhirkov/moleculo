@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.18.0 — 2026-09-01
+
+**No rebuild. Nothing about your index or your answers changes — this release is
+speed.** After two versions that asked for a rebuild, this one asks for nothing:
+every hit set, identity key, aromatic perception and molfile signature is
+byte-identical to 0.17.0, and that is asserted by tests rather than believed.
+
+**A substructure search is 17–23% faster, and decoding is 26% faster.** Measured
+against 0.17.0 on the same machine in one sitting, four alternating rounds:
+
+| | 0.17.0 | 0.18.0 |
+|---|---:|---:|
+| benzene over 7 420 molecules | 16.4 ms | **12.7** |
+| an ester query | 13.8 | **11.3** |
+| `[R2]`, which forces full ring perception | 61.8 | **50.9** |
+| the same on two threads | 10.3 | **8.2** |
+| decoding alone, no matching | 7.2 | **5.3** |
+
+Similarity and screening are unchanged, because nothing on those paths was
+touched.
+
+**What was actually wrong.** Three things, each an allocation nobody had looked
+for, found by profiling rather than by reading:
+
+- the matcher allocated a vector **on every node of every search of every row**,
+  to hold the candidates it was about to loop over;
+- decoding a molecule built its **entire adjacency index** — three allocations —
+  to compute hydrogen counts, a question that is one pass over the bonds, and it
+  did that before anything had asked whether the row was even a candidate;
+- ring perception allocated three vectors **per ring bond**, where one set per
+  molecule does.
+
+⚠ **The honest shape of it**: a profiler said the allocator was 40.7% of a ring
+query's time, and the first two readings of *which* allocation mattered were
+wrong while being right that allocation did. What worked was reading the call
+path rather than the largest-looking data structure.
+
+**Unchanged:** no format bump, no vocabulary change, and every limitation in this
+README stands where 0.17.0 left it — the fullerene identity limitation, the 202
+documented aromatic divergences, the rows too branched to decide, and the six
+molecules per 500 000 still refused in one spelling and accepted in another.
+
 ## 0.17.0 — 2026-08-31
 
 ⚠ **Rebuild your indexes when convenient.** The format is unchanged at version 3
