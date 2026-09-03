@@ -110,8 +110,8 @@ field, over two corpora from different producers:
 
 | corpus | molecules | agree on every field | refused where RDKit accepts |
 |---|---:|---:|---:|
-| ChEMBL | 2 897 799 | **99.991%** | 5 |
-| ZINC20 | 5 119 973 | **99.9999%** | 14 |
+| ChEMBL | 2 897 819 | **99.992%** | **0** |
+| ZINC20 | 5 200 000 | **99.9999%** | **0** |
 
 The remaining divergences are catalogued rather than unknown, and on the ZINC
 sample **none of them is ours**: all three aromatic disagreements are cases
@@ -129,21 +129,31 @@ the whole of PubChem rather than a sample: of 124 469 489 rows, 42 142 are
 refused (0.034%), every one of them for a valence no element allows —
 `FBr(F)F`, `O=Cl(=O)(=O)F` — and RDKit refuses them too.
 
-The ZINC sample turned up fourteen refusals RDKit does *not* share, and they are
-worth knowing about because the disagreement runs the other way. Each carries a
-**triple bond between two aromatic atoms inside the ring** — `c1sc#cc1I`. A
-triple bond is linear, so no five-membered ring can hold one, and a ring that
-holds one cannot be planar or aromatic. RDKit reports it as five aromatic atoms
-with a triple bond among them; this build says it cannot kekulize the ring,
-which is precisely what is wrong with it.
+⚠ **Both refusal columns read zero since 0.19.0, and until then this section
+argued for the refusals.** It said the ZINC sample turned up fourteen molecules
+RDKit reads and this build refused — each with a **triple bond between two
+aromatic atoms inside a ring**, `c1sc#cc1I` — and that refusing them was being
+right, because a linear triple bond cannot sit in a planar aromatic ring. The
+chemistry in that sentence stands; the conclusion did not. **Reading a string
+and deciding what it means are different jobs**, and the reader was letting the
+perceiver decide whether a string could be read at all. Arthor reads every one
+of those strings and calls the ring *not aromatic* — tolerance in the reader,
+strictness in the perceiver, at the same time. So does this build now:
+`c1sc#cc1I` reads, and reads as 0 aromatic atoms, which is what Arthor answers
+and RDKit does not. On a rebuilt every-thirtieth-line sample of 5 200 000 ZINC20
+molecules the old reader refused **7** that RDKit reads; the new one refuses
+**none**.
 
-ChEMBL's five are small enough to name, and four of them are one thing: an
-**aromatic ring containing boron** — `Cc1b[n+](…)cc(C)c1` and three others.
-Boron in an aromatic ring is a documented divergence rather than an oversight;
-the fifth is a `[c-][n+]` ylide. ⚠ Two acridinium-type `[nH+]` rings and a zinc
-complex used to be in this list and are not any more — the acridiniums because
-0.6.0 refuses them *and so does RDKit*, which moves them out of the disagreement
-rather than fixing them.
+ChEMBL's were four **aromatic rings containing boron** — `Cc1b[n+](…)cc(C)c1`
+and three others — and they read now too, for the same reason: `[b-]` is
+isoelectronic with carbon and takes a ring double bond, borabenzene takes one,
+and only borole with a hydrogen on the boron does not. Every cell of that table
+was run against RDKit rather than reasoned. ⚠ **The number in the table read
+"5" for a day on a corpus that could not have contained a refusal** — the
+oracle's ChEMBL file had been recovered from a shard, so it held only rows the
+build already accepted. Refusals are measured on the re-fetched file now, all
+2 897 819 rows, and the 13 this build still refuses are refused by RDKit too:
+`[PH]F6` and `[AsH]F6` written with a hydrogen, a valence no element allows.
 
 ---
 
@@ -1076,8 +1086,8 @@ saying plainly what each is for and where this build comes off worse.
 RDKit reads the corpus and moleculo reads the corpus and the two are diffed
 field by field: formula, atom and bond counts, ring count, aromatic atoms,
 aromatic bonds, and the per-atom ring-bond counts that ring locks compile to.
-**99.991% of 2 897 799 ChEMBL molecules agree on every field, and 99.9999% of
-5 119 973 from ZINC20** — two producers, different chemistry. The rest are
+**99.992% of 2 897 819 ChEMBL molecules agree on every field, and 99.9999% of
+5 200 000 from ZINC20** — two producers, different chemistry. The rest are
 catalogued, with a reason each, rather than left as a percentage. On the ZINC
 sample the catalogue is empty of anything this build owns: every aromatic
 disagreement there is one where RDKit's answer depends on how the molecule was
@@ -1088,8 +1098,14 @@ the default assumption is that this build is wrong. The exceptions are written
 down, and the largest of them is not a disagreement at all. On a furan bridged
 into a macrocycle, **RDKit's answer depends on the order it happens to walk the
 rings** — the same molecule, written two ways, gets two answers from the same
-build. That is 202 of the 211 remaining divergences. Arthor is stable there, and
-this build follows it.
+build. That is 186 of the 210 remaining divergences, and most of the other 24
+are the same class caught by a stricter test. Arthor is stable there, and this
+build follows it. ⚠ **What is left after that is not ours**: the two
+aromatic-boron rings that used to head this list are read by Arthor exactly as
+this build reads them — 0 aromatic, borazine itself included — so on those two
+RDKit stands alone; and of the two fullerene adducts that read one atom short of
+*both* references, one is fixed in 0.19.0 and the other waits on a ring-basis
+decision the owner has taken the other way, under *Known limitations*.
 
 RDKit is also the better tool for most jobs that are not this one. It reads and
 writes every format, generates coordinates, computes descriptors, does
@@ -1123,7 +1139,7 @@ rather than assumed:
 | similarity, resident database | 3 300 M molecules/s at 1.647 B, 256-bit | 88 M/s default, **580 M/s** with `--fp-codec none` — ten threads, 512-bit, 2.9 M |
 | largest database served | 15.18 B molecules | 124.4 M verified end to end |
 | substructure hit count | capped at 20 000 | exhaustive, or an honest floor |
-| index size | not published | **84.3 bytes per molecule** — 124 427 347 molecules in 16 shards, 10.49 GB |
+| index size | not published | **92.5 bytes per molecule** — 124 427 347 molecules in 16 shards, 11.5 GB, built by 0.17.0 (⚠ this row read 84.3 for three releases, a figure no other document carried; the 0.16.0 screen costs +7.1% and the rest is the corpus) |
 
 ⚠ **The index-size row is the one number a buyer asks first and it cannot be
 compared**: Arthor publishes no such figure, so ours stands alone rather than
@@ -1329,30 +1345,46 @@ Everything else on the list does something this does not.
   **fullerene chemistry as a class**, which a random sample of ordinary
   molecules will almost never contain.
 
-  ⚠ **This is a price rather than a bug, and both sides of it are measured.**
-  On a fused cage the ring *count* is stable — always the cyclomatic number, and
-  always right — but the *choice* of rings is not, which is what SSSR's
-  non-uniqueness means there. Asked as a signature that does not depend on atom
-  numbering, over the 22 cages at 24 spellings each: **this build's ring basis
-  moves on 22 of 22, and keeping every shortest cycle through every ring bond —
-  what RDKit's symmetrisation is built on — moves on 0 of 22.** So the stable
-  definition exists and we do not use it.
+  ⚠ **This is a price rather than a bug, both sides of it are measured, and
+  the decision has been taken: the price is paid.** On a fused cage the ring
+  *count* is stable — always the cyclomatic number, and always right — but the
+  *choice* of rings is not, which is what SSSR's non-uniqueness means there.
+  Mapping the rings of one spelling onto another atom by atom, with every
+  automorphism tried, over the 22 cages at 24 spellings each: **this build's
+  ring set depends on the spelling on 21 of 22, and keeping every shortest cycle
+  through every ring bond — what RDKit's symmetrisation is built on — on 0 of
+  22.** So the stable definition exists and we do not use it.
 
-  ⚠ **What using it would cost is why this is a decision and not a fix.** The
-  ring count would change on **138 503 of 9 999 789 PubChem molecules — 1.39%**
-  — and with it every answer built on ring perception, including the aromatic
-  divergences listed below. On C60 the two definitions read 31 rings and 32:
-  the cyclomatic number against the 32 faces, which is Euler's relation and not
-  a defect in either. Until that decision is taken, this limitation stands as
-  written.
+  ⚠ **This paragraph said "moves on 22 of 22" until 0.19.0, by an instrument
+  that compared ring *shapes*, and 0.19.0 found the ring basis had been holding
+  things that were not rings at all** — a walk with its root dropped from both
+  ends, recorded as a ring because nothing checked that its last atom was bonded
+  to its first. That was noise on top of the real instability, not the
+  instability: fixed, the shape instrument reads 4 of 22 and the honest one
+  reads 21 of 22. One cause remains on cages, and it is the tie.
+
+  ⚠ **What using the stable definition would cost is why the owner decided
+  against it (2026-09-03).** The ring count would change on **138 503 of
+  9 999 789 PubChem molecules — 1.39%** — and with it every `R` and `r` ring
+  primitive in a SMARTS on those molecules, every hit set built on them, and
+  the aromatic divergences listed below. On C60 the two definitions read 31
+  rings and 32: the cyclomatic number against the 32 faces, which is Euler's
+  relation and not a defect in either. **The ruling is to keep the minimal
+  basis and declare this**: `identity` on fullerene chemistry is unreliable as a
+  class, one fullerene adduct reads one aromatic atom fewer than both references
+  because the ring its atom needs is a tie ring a minimal basis cannot hold,
+  and neither changes until the ruling does.
 
   ⚠ **A further 45 in 500 000 were refused in one spelling and accepted in
-  another, and 39 of them are fixed in 0.17.0.** The class was aryl carbanions —
-  phenyl anions, Grignards, aryllithiums — which PubChem writes Kekulé
-  (`C1=CC=[C-]C=C1`), where we read them, and which RDKit writes aromatic
+  another; 39 were fixed in 0.17.0 and the last six in 0.19.0.** The class was
+  aryl carbanions — phenyl anions, Grignards, aryllithiums — which PubChem writes
+  Kekulé (`C1=CC=[C-]C=C1`), where we read them, and which RDKit writes aromatic
   (`[c-]1ccccc1`), where we returned a `400`. One structure, two answers, decided
-  by how it was drawn. **Six remain**, and they are three different things: an
-  aromatic ring holding a triple bond, aromatic silicon, and an aromatic borate.
+  by how it was drawn. The six that remained were an aromatic ring holding a
+  triple bond, aromatic silicon and an aromatic borate — three more cells of the
+  same table, each run against RDKit. **The count is 0 of 499 971 now**, and the
+  measurement is six seconds rather than a sample: every molecule we accept,
+  rewritten by RDKit's writer, read back.
 
   Neither affects substructure, SMARTS, similarity or formula search, whose hit
   sets do not depend on the key.
@@ -1364,8 +1396,11 @@ Everything else on the list does something this does not.
   from the misses, and the warning says the count is a floor. ⚠ **Earlier
   releases reported them silently as "your query does not occur here."** For
   calibration: matching every molecule against **itself** — the easiest query
-  there is — 455 of 497 693 PubChem molecules exceed the budget. Raising it is
-  not offered as a fix, because it trades a silent wrong answer for a slow one.
+  there is — **30 of 9 999 789** PubChem molecules exceed the budget. ⚠ This
+  entry said "455 of 497 693" until 0.19.0; that was a sample nobody recorded
+  and 150× out, and the seed fix in 0.15.0 had already taken the real figure
+  from 59 to 30. Raising the budget is not offered as a fix, because it trades a
+  silent wrong answer for a slow one.
 - **Some structures we hand back as SMILES are read by other tools as a
   different molecule.** The `SMILES` column every result carries — in `json`,
   `tsv` and `csv` alike — is consumed by whatever you pipe it into, and over
@@ -1421,25 +1456,33 @@ Everything else on the list does something this does not.
   built as many shards and is searched across all of them, but every shard has
   to be on the box serving it. Several databases can still be searched in one
   request.
-- **211 molecules in 2 897 799 of ChEMBL read a different aromatic system from
+- **210 molecules in 2 897 819 of ChEMBL read a different aromatic system from
   RDKit** — three in 5 119 973 of ZINC20, where none of them is ours —
-  and the composition matters more than the number. **202 of them are cases
+  and the composition matters more than the number. **186 of them are cases
   where RDKit's own answer is not a function of the molecule**: on a furan or
   thiophene bridged so that its oxygen also lies on a ring of nine atoms or
   more, its answer depends on which ring its walk reaches first, and the same
   graph read 5 aromatic atoms on 128 of 300 random writings of itself and 0 on
-  the other 172. Arthor is stable there and agrees with this build. The residue
-  that is genuinely ours is **nine molecules** — two aromatic-boron rings, two
-  fullerene adducts at one atom each, five one-offs.
+  the other 172. Arthor is stable there and agrees with this build; most of the
+  other 24 are that class caught by a stricter test. ⚠ **The residue that used
+  to be called "genuinely ours" — nine molecules — was asked of both references
+  in 0.19.0 and is not**: the two aromatic-boron rings are read by Arthor as
+  this build reads them, 0 aromatic, borazine itself included, so RDKit stands
+  alone there; of the two fullerene adducts one is fixed and the other is the
+  ring-basis ruling above; the five one-offs were the fusion bonds below.
 
   ⚠ **That entry counts aromatic *atoms*. Bonds are counted separately and were
   worse until 0.15.0.** Over 398 040 ring-fusion bonds in 500 000 PubChem
-  molecules, **9 now disagree with RDKit where 145 did** — a bond can lie inside
+  molecules, **4 now disagree with RDKit where 145 did** — a bond can lie inside
   one aromatic ring combination and on the edge of another, and this build used
-  to decide from the first combination it found and never revisit. 185 further
-  disagreements are the same furan-in-a-macrocycle cases described above, where
-  RDKit's answer is not a function of the molecule, and are left alone
-  deliberately.
+  to decide from the first combination it found and never revisit. 0.19.0
+  closed the last five: the rescue skipped any ring combination whose rings
+  were all already settled, and that is exactly the combination whose edge
+  carries a fusion bond when two rings fail alone and a third passes. **The
+  four that remain all sit in one tetra-azo molecule where Arthor reads every
+  bond as this build does and RDKit alone differs.** 185 further disagreements
+  are the same furan-in-a-macrocycle cases described above, where RDKit's
+  answer is not a function of the molecule, and are left alone deliberately.
 - **Only three quarters of a *single shard's* build is parallel.** The screening
   passes use every core; reading the input, merging the posting runs and writing
   the fingerprints do not. Measured on ten cores at 124 M: the parallel passes

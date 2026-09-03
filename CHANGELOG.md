@@ -1,5 +1,73 @@
 # Changelog
 
+## 0.19.0 — 2026-09-03
+
+⚠ **Rebuild your indexes when convenient; nothing forces it.** The format is
+unchanged at version 3 and every existing index opens and answers. Three things
+in this release change what is *stored* — which molecules the parser accepts,
+which bonds are aromatic, and which rings a cage has — and an index built
+earlier keeps the old answer on exactly those rows. Measured, the rows are few:
+**1 in 2 897 819** of ChEMBL reads differently, **39 in 9 999 789** of PubChem,
+plus **10 in 500 000** whose rings change without their counts changing, and a
+handful of molecules per million that older readers refused outright and are
+therefore absent from an older shard.
+
+**The reader stopped consulting the perceiver.** A valid SMILES that RDKit's own
+writer produces — `c1ccccc#1`, `c1cc[siH]cc1`, `c1cc[n+](-[b-]2ccc3ccccc3c2)cc1`
+— came back as a `400`, because the table that turns a lower-case string into
+alternating bonds had no entry for an atom this build would never itself call
+aromatic. Reading a string and deciding what it means are different jobs. Three
+entries and one element symbol, every cell run against RDKit: a triple bond
+fixes an atom exactly as a double one does, silicon shares carbon's rule, `[b-]`
+is isoelectronic with carbon. ⚠ **The chemistry did not change** — those rings
+still read as *not* aromatic, which is what Arthor answers; RDKit alone calls
+them aromatic. **6 of 499 971** PubChem molecules refused in one spelling and
+accepted in another are now **0**; ChEMBL's four aromatic-boron refusals read;
+and a triple bond inside a thiophene, which the README had defended refusing,
+reads too, as it does in Arthor. **On ChEMBL, the molecules this build refuses
+are now exactly the ones RDKit refuses.**
+
+**Five ring-fusion bonds read single where both references read aromatic.** In
+a fused system where two rings fail the aromaticity test alone and a third
+passes, the combination that puts their shared bond on an aromatic circuit was
+never examined, because every ring in it was already settled by another. A
+settled ring is not a marked bond. ⚠ **The same skip had made those five
+molecules' identity keys depend on how they were spelled** — two keys each,
+now one. The four fusion bonds that remain all sit in one tetra-azo molecule
+where Arthor reads every bond as this build does.
+
+**The ring basis held things that were not rings.** The fallback that finds
+rings in bridged cages dropped the first atom of its walk, and nothing checked
+that the last atom was bonded to the first — so a five-ring missing one atom
+was stored as a four-ring, and it displaced a real ring. **A `[r3]` query used to
+match a pentaprismane, which has no three-ring.** Ten molecules in 500 000 held
+such a ring; every one is a cage or a bridged polycyclic. One fullerene adduct
+that read one aromatic atom fewer than both references reads correctly now;
+three strapped porphyrins read as Arthor reads them where RDKit gives seven
+different answers depending on spelling. ⚠ Ring *counts* moved nowhere — this
+was always the right number of rings, one of them wrong.
+
+**A ruling recorded, not a change.** The owner has decided to keep the minimal
+ring basis rather than adopt every relevant cycle. What that keeps: every `R`
+and `r` ring primitive answers as it does today on the 1.39% of PubChem where
+the two definitions disagree. What it costs, now stated in the README as a
+declared limitation rather than an open question: on fullerene cages the ring
+choice follows the spelling on 21 of 22, `identity` is unreliable there as a
+class, and one fullerene adduct reads 65 aromatic atoms where both references
+read 66.
+
+⚠ **Three numbers in the README were wrong and are corrected, each with the
+reason.** *Refused where RDKit accepts: 5* was measured on a corpus that had
+been recovered from a shard and so could not hold a refusal at all. *455 of
+497 693 undecidable rows* was a sample nobody recorded, 150× out; the figure is
+30 of 9 999 789. *84.3 bytes per molecule* for the 124 M index was a number no
+other document carried; it is 92.5, built by 0.17.0.
+
+**Unchanged:** no format bump, no vocabulary change (the instance was asked:
+`CINQRS`, no gaps, and the collision on `G` that the 2026-08-25 sweep found is gone — the instance no longer accepts it). Speed is
+untouched. Every limitation in the README stands where 0.18.0 left it except
+the three closed above.
+
 ## 0.18.0 — 2026-09-01
 
 **No rebuild. Nothing about your index or your answers changes — this release is
