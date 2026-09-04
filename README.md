@@ -687,7 +687,18 @@ hit set asserted identical either way: four queries get a plan and all four win
 — `S(=O)(=O)N` reads **3 801 candidates for 3 712 real hits**, `FC(F)F` 4 673
 for 3 904, `c1cn[nH]c1` 3 264 for 405, and `c-c` is exact at 10 724.
 
-⚠ **The other 52 queries are refused a plan and scan, which is correct.** Most
+⚠⚠ **That was measured on a 199 977-row prefix, and on an 8 476 919-row PubChem
+shard it is one plan of 56.** Every hit set is still identical to the scan's —
+the property the screen is held to — but the features the sulfonamide, the
+pyrazole and the biaryl need sit above the density ceiling on the real
+collection: `S(=O)(=O)N` is in 7.95% of that shard against 1.86% of the
+prefix, and a feature denser than one row in sixteen is not indexed because
+intersecting it costs more than it saves. **How much your index screens is a
+property of your collection's density profile**, and a figure quoted without
+its shard means nothing. The scan the rest fall through to is the path 0.20.0
+made a fifth faster, and nearly a third on four threads.
+
+⚠ **The other queries are refused a plan and scan, which is correct.** Most
 are bracket SMARTS the planner cannot read, and they name things too common to
 be worth skipping. ⚠ **A fused ring is unscreenable by construction** —
 naphthalene's short paths are the same runs of aromatic carbon as benzene's — so
@@ -1362,6 +1373,19 @@ Everything else on the list does something this does not.
   to its first. That was noise on top of the real instability, not the
   instability: fixed, the shape instrument reads 4 of 22 and the honest one
   reads 21 of 22. One cause remains on cages, and it is the tie.
+
+  ⚠ **And it costs something on ordinary chemistry too, measured after the
+  ruling rather than before it.** Over 40 000 PubChem molecules at 25 spellings
+  each, **385 — about one in a hundred, a lower bound — have a ring set that
+  depends on how they were written**: bridged bicyclics, adamantanes,
+  quinuclidines, morphinans, anything where two equal-sized cycles tie. What a
+  query can see of that: `[R2]`, `[R1]`, `[r5]` and `[r6]` never flip at the
+  molecule level — a tie is only ever among rings of one size — but **`[R3]`
+  answers differently on 48 of the 385 depending on the spelling the
+  *collection* stored**, `[N;R2]` on 15 and `[R2][R2]` on 14, which is about
+  0.12% of PubChem answering a count-of-three query by how it was drawn.
+  RDKit's symmetrised ring set does not have this (it keeps every tied ring),
+  and it is exactly what the alternative below would buy.
 
   ⚠ **What using the stable definition would cost is why the owner decided
   against it (2026-09-03).** The ring count would change on **138 503 of

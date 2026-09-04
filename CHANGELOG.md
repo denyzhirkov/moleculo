@@ -1,5 +1,71 @@
 # Changelog
 
+## 0.20.0 — 2026-09-04
+
+**No rebuild. Nothing about your index or your answers changes — this release is
+speed, and two things learned about the product that the README now says.**
+Every hit set, identity key, aromatic perception and ring set is byte-identical
+to 0.19.0, asserted by the goldens and by two population comparisons rather than
+believed.
+
+**A substructure scan is a fifth faster, a ring query a quarter, and a scan on
+four threads nearly a third.** Three changes, each measured against the commit
+before it in four alternating rounds on one machine — the only comparison this
+project accepts — and compounded here, because an absolute millisecond on this
+laptop is not a number that travels:
+
+| | change 1 | change 2 | change 3 | together |
+|---|---:|---:|---:|---:|
+| benzene over 7 420 molecules | — | −6.1% | −13.6% | **≈ −19%** |
+| an ester query | — | −5.6% | −15.5% | **≈ −20%** |
+| `[R2]`, which forces full ring perception | −23.0% | — | −3.5% | **≈ −26%** |
+| benzene on four threads | — | −18.1% | −15.1% | **≈ −30%** |
+| decoding alone, no matching | — | — | — | unmoved, as the control |
+
+A dash is a verdict withheld: the change was smaller than that benchmark's own
+spread. Similarity and screening are unchanged; nothing on those paths was
+touched.
+
+**What was actually done**, in three steps, each predicted before it was run:
+
+- **A benzene scan allocates nothing per row.** It allocated 5.8 times per row
+  and every one was scratch the next row needed again at the same size: the
+  adjacency index a reused molecule rebuilt from nothing, the valence array of
+  the hydrogen pass, the matcher's two search buffers. All three are kept now.
+  ⚠ The parallel scans gained two to three times what the serial ones did —
+  eight workers freeing the same three buffers per row made the allocator a
+  shared cost no single-threaded profile could show.
+- **The hydrogen pass runs only when the query reads a count.** Filling in the
+  hydrogens a record does not store is a sweep over every bond of every row,
+  and `c1ccccc1` never reads one. The scan now asks the query first; `H`, `X`,
+  `v`, an enforced stereo check, a recursive subpattern and a formula still
+  fill. This replaced the alternative of storing the counts in the index, which
+  would have cost every operator a rebuild for the same gain.
+- **Ring perception walks ring bonds only, and keeps its candidates in two
+  arenas.** The shortest-cycle search was exploring every substituent of a
+  drug-like molecule before finding its way round the ring, and allocating a
+  pair of vectors per ring bond to hold what it found.
+
+**Two things the README now says that it did not, both measured this week:**
+
+- ⚠ **The screening index plans one corpus query in fifty-six on a real
+  PubChem shard**, against four in fifty-six on the 200 000-row prefix it was
+  judged on. Every hit set is still identical to the scan's; the features the
+  other three need are simply above the density ceiling on the real
+  collection. How much your index screens is a property of your collection,
+  and the README says so where the four-in-fifty-six figure used to stand
+  alone.
+- ⚠ **The minimal ring basis costs something on ordinary chemistry**, not only
+  on fullerenes: about one PubChem molecule in a hundred has a ring set that
+  depends on how it was written, and on those `[R3]` — an atom in three rings
+  — answers by the spelling the collection stored, on about 0.12% of
+  molecules. `[R2]`, `[r5]` and `[r6]` never do. The ruling to keep the minimal
+  basis stands; the README's limitation now carries this price beside the
+  fullerene one.
+
+**Unchanged:** no format bump, no vocabulary change, no rebuild. Every
+limitation in the README stands where 0.19.0 left it, plus the one above.
+
 ## 0.19.0 — 2026-09-03
 
 ⚠ **Rebuild your indexes when convenient; nothing forces it.** The format is
