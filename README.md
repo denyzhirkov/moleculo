@@ -1462,6 +1462,22 @@ Everything else on the list does something this does not.
   Fixed in 0.14.0 and 0.14.1; **structures that come back as a different molecule
   are now 0 in 100 000.**
 
+  ⚠ **That sentence was true of the PubChem sample it was measured on and false
+  on ChEMBL until 0.20.1.** A bare metal — `[Na]`, `[Li]`, `[Cs]`, `[Ra]`, a
+  lithium citrate written as three lithium atoms — has a total valence of
+  zero, and the writer put `0` in the field. In a V2000 atom line a written
+  zero means *not stated*, so a reader derives the valence from its own default
+  table and RDKit's says sodium takes one bond: `[Na]` came back as `[NaH]`,
+  `[Ra]` as `[RaH2]`, lithium citrate as three lithium hydrides. **Three records
+  in a 100 000-line ChEMBL prefix, a different compound each.** V2000's code
+  for zero valence is **15**, and it is written now for every atom outside the
+  organic subset whose total is zero, charged or not. Measured after the fix
+  over six populations — the three corpora, two ChEMBL prefixes and the PubChem
+  sample — **0 records come back as a different graph**. ⚠ The PubChem sample
+  holds no bare metal, which is why the sentence above stood for three
+  releases; if you exported SD files with 0.20.0 or earlier and your collection
+  holds bare metals, export them again.
+
   **A record no longer claims unpaired electrons an atom does not have.** This
   build expected a negatively charged phosphorus, sulfur or iodine to reach a
   *higher* valence than it does, so the shortfall was written as a radical:

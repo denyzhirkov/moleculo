@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.20.1 — 2026-09-06
+
+**No rebuild. One fix to the SD file writer, and an instruction if you exported
+bare metals.**
+
+**A bare metal came back from an SD file as its hydride.** `[Na]`, `[Li]`,
+`[Cs]`, `[Ra]` — any atom outside the organic subset with no bonds and no
+hydrogens — has a total valence of zero, and the writer put `0` in the atom
+line's valence field. In V2000 a written zero means *not stated*, so a reader
+derives the valence itself; RDKit's default table says sodium takes one bond,
+radium two, and a lithium citrate written as three lithium atoms came back as
+three lithium hydrides. **Three records in a 100 000-line ChEMBL prefix, each a
+different compound on the way back.** V2000's code for zero valence is **15**,
+and it is written now for every such atom, charged or not. Measured after the
+fix over six populations — world-drugs, real-space, mcule, two 100 000-line
+ChEMBL prefixes and the PubChem 100 000 sample — **0 records return as a
+different graph**, and nothing else in the SD output moved.
+
+⚠ **If your collection holds bare metals and you exported SD files with 0.20.0
+or earlier, export them again.** Search was never affected: the molecule stored
+and matched is correct, and so is every other output format.
+
+⚠ **How it was found, because the method is the point.** The README's
+"structures that come back as a different molecule are now 0 in 100 000" was
+measured on a PubChem sample that holds no bare metal, and had stood for three
+releases. Re-deriving a *different* row of the quality ledger — one whose
+population nobody had recorded how to draw — over named ChEMBL prefixes turned
+the three up as a bucket the diff tool already had and nothing had ever filled.
+
+**Unchanged:** no format bump, no vocabulary change, no rebuild, no change to
+any search or to the SMILES, TSV or CSV outputs.
+
 ## 0.20.0 — 2026-09-04
 
 **No rebuild. Nothing about your index or your answers changes — this release is
