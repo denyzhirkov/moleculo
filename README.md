@@ -971,6 +971,74 @@ thing that tells you the collection searched is not the collection you asked
 about. A database whose every shard is gone is refused outright rather than
 served as an empty one.
 
+### A database on more than one machine
+
+A collection that does not fit one box is served as **parts**: every part is an
+ordinary `moleculo serve` holding some of the database's shards under the same
+name, and one server — the coordinator — names them and answers for the whole.
+A client cannot tell, except that `partStats` is keyed by part:
+
+```sh
+# on each part, its own shards under the database's name
+moleculo serve /indexes                                  # holds big/shard-0000..0007
+moleculo serve /indexes                                  # holds big/shard-0008..0015
+
+# on the coordinator, no shards of its own, the parts in shard order
+moleculo serve /empty --part big=one@http://one:8080 --part big=two@http://two:8080
+```
+
+The same list can live in `<root>/big/parts.json` as
+`{"parts":[{"name":"one","url":"http://one:8080"},…]}`; a flag wins over the
+file. A shard directory is a database of one shard and keeps its shard id, so
+copying `big/shard-0009` to a part as `big/` keeps every row id global and the
+hits in the order one server would return them. **List the parts in shard
+order; that promise cannot be checked from the coordinator**, because the wire
+carries a row's index within its shard and not the shard.
+
+What the coordinator does: forwards the request to every part at once over the
+same protocol you use, sums the counts, concatenates the rows in part order —
+or merges a similarity by score — and pages the result. Polling works as it
+does on one server: `hasMore` holds until every part has settled. A part's own
+`--max-seconds` bounds its search; the coordinator adds a connect timeout of
+five seconds and a total timeout of its own deadline plus five.
+
+⚠ **A similarity's ties can sit in a different order than one server gives
+them.** The wire carries a score to three decimals and a single server ranks by
+the exact one, so among rows the coordinator cannot tell apart it orders by row
+index. The rows on either side of a tie, the set inside it, the scores and the
+histogram are the same; a `length=100` ranking on world-drugs showed 22 rows in
+seven ties swapped inside their tie and nowhere else — and a page that ends
+inside a tie can show different members of it, for the same reason.
+
+**A part that does not answer** — down, timing out, refusing — makes the answer
+*incomplete* in exactly the shape a missing shard does: the count falls with
+the part, `verified` says how much was covered, and the warning names it:
+
+```json
+"warning": "big: incomplete: 1 of 2 parts unavailable — two (http://two:8080): timeout: global"
+```
+
+Two answers cannot be partial and are refused instead: a **similarity** (a
+ranking over some of the collection is not a ranking, `503`) and a **negated
+search** (the complement of a floor holds matching rows permanently, `400`).
+Warming, evicting, uploading and reload are done on each part, and the
+coordinator says so when asked. A request naming a database of parts beside
+another database is refused: name it alone.
+
+⚠⚠ **A PART HAS NO AUTHENTICATION, EXACTLY LIKE THIS SERVER, AND ANSWERS TO
+WHOEVER CAN REACH IT. THE PARTS MUST BE REACHABLE ONLY FROM THE COORDINATOR.**
+That is a network boundary you draw, not something this software enforces, and
+the coordinator prints the same sentence at startup for every database of
+parts it serves. Query strings travel to the parts over plain HTTP, as they
+travel from your client to the coordinator.
+
+⚠ **Measured on one laptop, as two processes; not on two machines.** The
+property that was tested is that the answer does not depend on where the
+shards live — every corpus query, a page across the seam between two parts, a
+similarity's ranking and histogram, an identity, and the three text formats,
+all identical to one server holding both shards. Nothing about throughput on
+two machines has been measured, and this README does not claim a number for it.
+
 ### Watching it from the outside
 
 New in 0.6.0. Operator events go to **stderr** as structured lines, so stdout
@@ -1502,10 +1570,12 @@ Everything else on the list does something this does not.
   and its own valence model declines. Radical state on a *metal* is still not
   modelled here at all — 601 records in 100 000 state fewer unpaired electrons
   than RDKit does, every one of them on an atom outside the organic subset.
-- **Sharding is within one machine, not across machines.** A database may be
-  built as many shards and is searched across all of them, but every shard has
-  to be on the box serving it. Several databases can still be searched in one
-  request.
+- ~~**Sharding is within one machine, not across machines.**~~ ⚠ **Closed in
+  0.22.0** — a database may be served as *parts* on other machines, see
+  [A database on more than one machine](#a-database-on-more-than-one-machine).
+  What remains true: it has been demonstrated with several servers on one
+  machine and never measured across two, and the parts must sit in shard order
+  by the operator's hand — the coordinator cannot check it.
 - **210 molecules in 2 897 819 of ChEMBL read a different aromatic system from
   RDKit** — three in 5 119 973 of ZINC20, where none of them is ours —
   and the composition matters more than the number. **186 of them are cases
@@ -1550,9 +1620,11 @@ Everything else on the list does something this does not.
 ## Security
 
 - Query structures are treated as confidential intellectual property: never
-  logged in full, never sent anywhere, never written outside the process.
-- The software performs no outbound network communication, sends no telemetry
-  and reports nothing to anyone.
+  logged in full, never written outside the process, and sent to nobody —
+  **except the parts a coordinator was told to serve**, over plain HTTP, which
+  is why they must be reachable only from it.
+- The software performs no outbound network communication other than to those
+  parts, sends no telemetry and reports nothing to anyone.
 - A malformed SMILES or SMARTS is a `400`, never a crash.
 - Every search is bounded by wall clock, 30 seconds by default, and a search
   that hits the bound reports a partial count as partial. Searches also queue

@@ -1,5 +1,69 @@
 # Changelog
 
+## 0.22.0 — 2026-09-07
+
+**No rebuild. A database can now be served from more than one machine, and the
+warning about who may reach a server grows a second paragraph.**
+
+**A database on more than one machine.** A collection that does not fit one
+box is served as *parts*: every part is an ordinary `moleculo serve` holding
+some of the shards, and a coordinator — the same binary, holding nothing of
+its own — names them and answers as if it held everything. Name them on the
+command line, `--part big=one@http://one:8080 --part big=two@http://two:8080`,
+in shard order, or in `<root>/big/parts.json`; a flag wins over the file, and
+a database is local *or* parts — both at once is refused at startup with the
+name. The coordinator forwards every request to every part over the same
+protocol you use, and merges: hits in the order one server would return them,
+counts summed, a similarity re-ranked by score, `partStats` keyed by part
+instead of by shard. A page across the seam between two parts costs each part
+one request. Warming, evicting, uploading and reloading are done on the part
+that holds the disk.
+
+⚠ **One thing a coordinator answers differently, and it is declared rather
+than hidden:** a similarity's ties. The wire carries a score to three decimals
+and one server ranks by the exact one, so among rows a coordinator cannot tell
+apart it orders by row index — 22 rows in seven ties of a `length=100` ranking
+on world-drugs, swapped inside their tie and nowhere else, and a page that
+ends inside a tie can show different members of it. The set inside a tie, the
+scores and the histogram are identical.
+
+**When a part does not answer** the database is *incomplete* in the same shape
+a missing shard makes it: the warning names the part and the reason, the count
+is a floor, `verified` is how many rows the answering parts looked at. ⚠ That
+last number read **0** in the first build of this release — the test had asked
+only whether the field existed, and the release check read it — so the figure
+is now asserted, not its presence. The same check found an identity reply
+carrying `"warning": null` where one server omits the field; it is omitted now. A similarity over a partial
+collection is refused with `503` and a negated search with `400`, because a
+ranking over some of the rows is not a ranking and the complement of a floor is
+wrong permanently. `/dt/data` lists the parts without asking them — the first
+version asked, and a coordinator hung on its own parts for it.
+
+⚠ **THE PARTS MUST BE REACHABLE ONLY FROM THE COORDINATOR.** A part is a full
+server with the same unauthenticated surface; query strings travel to it over
+plain HTTP. The README says this in capitals and the coordinator prints it at
+startup. Two lines of this README that said the software sends nothing anywhere
+now say *except to the parts it was told to serve*.
+
+⚠ **Demonstrated, not measured.** The test holds four servers in one process —
+two parts, one server holding both their shards, one coordinator — to identical
+answers on every corpus query, a page across the seam, a similarity, an
+identity and all three text formats, then stops a part and checks the degraded
+answers. Nobody has run it across two machines and there is no throughput
+figure for doing so. **Shard order across parts is your promise, not a check**:
+the wire carries a row's index within its shard and never the shard, so a
+coordinator given the parts out of order returns hits out of order and cannot
+know.
+
+New in the binary: `ureq` 3 as the HTTP client, without TLS on purpose —
+a part is inside your perimeter by contract. Connect timeout 5 s, a whole
+exchange bounded by the search's deadline plus 5 s, response bodies capped at
+256 MB.
+
+**What has not changed.** Every hit set, identity key, aromatic perception and
+ring set is byte-identical to 0.21.0; the index format is unchanged at version
+3 and nothing needs rebuilding.
+
 ## 0.21.0 — 2026-09-07
 
 **No rebuild. The identity key stopped hearing a slash that cannot mean
