@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.21.0 — 2026-09-07
+
+**No rebuild. The identity key stopped hearing a slash that cannot mean
+anything, one limitation in this README was eleven releases stale, and two more
+questions with no oracle read zero at scale.**
+
+**A directional mark that cannot carry a configuration no longer moves the
+identity key.** `/dt/{db}/identity` answers from a key computed over the
+molecule, and until now a `/` or `\` on a double bond went into it whatever the
+bond could actually mean. Two places a mark means nothing: a double bond inside
+a ring of fewer than eight atoms, whose geometry the ring forces; and a double
+bond one of whose ends carries two substituents that are the same to chemistry
+— `C/C=C(/C)C`, or a nitronate `C=[N+]([O-])[O-]` — where *cis to which one*
+has no answer. `RDKit` assigns no stereo to either and its writer still emits
+marks on them in a random walk, which is how one molecule of 40 000 at 25
+spellings came back with two keys: a cyclohexenyl nitronate, 23 spellings one
+key and the marked spelling another. The key now ignores both, by `RDKit`'s own
+two rules, and the symmetry test uses the equitable refinement rather than the
+canonical rank — the rank's ties have been broken so that a string can be
+written, and it tells two methyls apart. ⚠ **Keys are not stored in the
+index**, so nothing needs rebuilding. Measured: **0 keys moved on all 2 897 819
+ChEMBL rows** (ChEMBL writes no such marks) and **0 of 40 000** unstable at 25
+spellings after. A mark that does mean something still counts: cyclooctene
+keeps its trans, and methyl-against-ethyl keeps its side.
+
+⚠ **Two limitations in this README were stale, one for eleven releases.** *A
+hydrogen on a charged sulfur is dropped from an SD file* had been fixed by
+0.9.0's valence field and stood as live since; it is struck through with the
+reason. *One molecule in 78 935 leaves `fmt=sdf` as a different isomer* was
+measured over two ChEMBL samples nobody recorded how to draw; over five
+populations anyone can rebuild it is **0 of 76 094**, and the entry now says
+that the one — a fused macrolactam — is a real class whose rate is not known.
+Both found by re-deriving every figure whose population was never written
+down, which is the pass that found the bare-metal defect in 0.20.1.
+
+**Two more zeros, at the scale they are about**, with the instruments
+committed: the parallel scan returns the serial scan's answer on **56 of 56**
+corpus queries over an 8 476 919-row PubChem shard — hits, rows verified and
+rows undecided — where the test had only ever said so on 3 004 rows; and
+`/dt/{db}/identity` finds **1 001 of 1 001** sampled rows of a 2.9 M ChEMBL
+shard through the served endpoint, every answer complete. ⚠ A zero is a
+statement about the population it was read on, and both are named.
+
+**Unchanged:** no format bump, no vocabulary change, no change to any hit set,
+aromatic perception or SD output.
+
 ## 0.20.1 — 2026-09-06
 
 **No rebuild. One fix to the SD file writer, and an instruction if you exported

@@ -1261,20 +1261,27 @@ Everything else on the list does something this does not.
 
 ## Known limitations
 
-- **One molecule in 78 935 leaves `fmt=sdf` as a different isomer.** Measured
-  against `RDKit` over world-drugs, real-space, mcule and two disjoint
-  100 000-molecule ChEMBL samples: **78 770 agree, 164 state *less* than they
-  could, and one states something false.** That one is a 29-membered macrolactam
-  whose ring shares 27 atoms with its neighbour — the layout refuses a fused
-  macrocycle by construction, and no amount of redrawing gets round it.
-  ⚠ **The 164 are losses, not lies**: a reader sees no configuration where it
-  expected one, which is visible, rather than the wrong one, which is not.
-- **A hydrogen on a charged sulfur is dropped from an SD file.** A sulfoximine
-  written `N[SH+]([O-])c1ccccc1` comes back as `N[S+]([O-])c1ccccc1` — one
-  hydrogen short, which is a different compound. It is the last of its kind:
-  eight records in 100 000, all one motif, and it is a limit of what this writer
-  puts on the atom line rather than of the model. It affects the SD file only;
-  search sees the hydrogen.
+- **`fmt=sdf` can state less stereochemistry than it could, and on a fused
+  macrocycle it may state a wrong isomer.** Measured against `RDKit` over five
+  populations anyone can rebuild — world-drugs, real-space, mcule, and ChEMBL
+  lines 1–100 000 and 100 001–200 000 (2026-09-06): **76 094 molecules with
+  stereochemistry, 75 960 agree, 134 state *less* than they could, 0 state
+  something false.** ⚠ This entry read *one in 78 935* from 2026-08-21, over
+  two ChEMBL samples nobody recorded how to draw; the one was a 29-membered
+  macrolactam whose ring shares 27 atoms with its neighbour — the layout refuses
+  a fused macrocycle by construction — and it is not in the five populations
+  above, so the class is real and its rate is not known. ⚠ **The 134 are
+  losses, not lies**: a reader sees no configuration where it expected one,
+  which is visible, rather than the wrong one, which is not.
+- ~~**A hydrogen on a charged sulfur is dropped from an SD file.**~~ ⚠ **Fixed in
+  0.9.0 and listed here as live for eleven releases.** A sulfoximine written
+  `N[SH+]([O-])c1ccccc1` came back as `N[S+]([O-])c1ccccc1` until the atom
+  line's valence field was written for a hydrogen the model cannot derive; it
+  reads back as itself now, and has since 2026-08-24. This entry was found
+  stale by re-checking every README figure whose population was never recorded
+  (2026-09-06) — the same pass that found the bare-metal defect above. What the
+  entry said about the mechanism was right; what it said about the state of the
+  product was not.
 
   ⚠ **This entry replaces a wrong one, and the correction is worth more than
   the entry.** Until this entry replaced it, this section said that deuterium written as its own
@@ -1335,7 +1342,10 @@ Everything else on the list does something this does not.
   at the deadline with `"complete": false`. Use `/search` for that question.
 - **The identity key is not yet invariant to how a molecule was written, and on
   fullerene cages it essentially never is.** Hand `/dt/{db}/identity` the same compound
-  spelled two different ways and **2 in 40 000 give two different keys**, which
+  spelled two different ways and **2 in 40 000 give two different keys** (the
+  2026-08-28 draw; a 2026-09-06 draw at 25 spellings reads **0**, after one
+  molecule that was not a cage — a nitronate whose spelling carried marks on a
+  bond that cannot have a configuration — taught the key to ignore such marks), which
   means the endpoint can answer *"we do not hold this"* about a compound the
   collection holds.
 
