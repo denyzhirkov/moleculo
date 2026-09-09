@@ -1332,9 +1332,16 @@ Everything else on the list does something this does not.
 - **`fmt=sdf` can state less stereochemistry than it could, and on a fused
   macrocycle it may state a wrong isomer.** Measured against `RDKit` over five
   populations anyone can rebuild — world-drugs, real-space, mcule, and ChEMBL
-  lines 1–100 000 and 100 001–200 000 (2026-09-06): **76 094 molecules with
-  stereochemistry, 75 960 agree, 134 state *less* than they could, 0 state
-  something false.** ⚠ This entry read *one in 78 935* from 2026-08-21, over
+  lines 1–100 000 and 100 001–200 000 (2026-09-08): **76 094 molecules with
+  stereochemistry, 76 086 agree, 8 state *less* than they could, 0 state
+  something false.** The 8 are bridged polycyclic cages — six daphnane-type
+  orthoesters, one bicyclo[2.2.2] — and one crowded peptide, where the layout
+  cannot spread a centre's neighbours far enough to read. ⚠ This read **134**
+  until 2026-09-08, and the two mechanisms behind 126 of them were the
+  writer's: a three-coordinate centre with a lone pair — a sulfoxide's sulfur,
+  a bridgehead nitrogen — was never marked at all (78), and a cyclopropane
+  fused on a ring was drawn with its apex *on top of* a ring atom (46). ⚠ The
+  entry read *one in 78 935* from 2026-08-21, over
   two ChEMBL samples nobody recorded how to draw; the one was a 29-membered
   macrolactam whose ring shares 27 atoms with its neighbour — the layout refuses
   a fused macrocycle by construction — and it is not in the five populations

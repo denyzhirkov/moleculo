@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.22.1 — 2026-09-09
+
+**No rebuild; only `fmt=sdf` output changes.**
+
+**`fmt=sdf` states the stereochemistry it used to lose on sulfoxides,
+bridgehead nitrogens and fused cyclopropanes.** Over the five populations the
+README names, the records that stated *less* stereochemistry than the source
+go from **134 to 8** of 76 094, with 0 stating anything false before and after.
+Two mechanisms, both the writer's: a three-coordinate centre with a lone pair
+— `[S@](=O)`, `[S@+]`, a nitrogen at a bridgehead — was never marked, because
+the wedge chooser wanted four drawn directions and a lone pair is not drawn
+(78 descriptors); and a three-membered ring fused on another was built with
+its apex on the ring atom it was fused to whenever the shared bond wrapped the
+ring's order (46). The second also changes drawings that carried no
+stereochemistry: about 6.5 % of ChEMBL records draw differently, and records
+with two atoms at one point fall from 21 % to 16 % of ChEMBL — ⚠ which says
+the layout is legible, not pretty, and that figure is new and not a promise.
+The 8 that remain are bridged cages and one crowded peptide.
+
 ## 0.22.0 — 2026-09-07
 
 **No rebuild. A database can now be served from more than one machine, and the
