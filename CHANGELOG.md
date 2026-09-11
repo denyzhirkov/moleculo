@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.23.0 — 2026-09-11
+
+**No rebuild. A database can now grow and shrink without being rebuilt, and one
+field on the wire changes what it counts.**
+
+**Adding to a database without rebuilding it.** `moleculo index append <db>
+<input.smi>` turns the new molecules into one more shard and touches nothing
+already there. The result is the index a full rebuild of both inputs would
+have written — **byte for byte, all ten files of every shard**, measured on the
+first 200 000 lines of ChEMBL cut in two — and existing row identifiers do not
+move. A database built as a single shard, which is the default, is converted by
+**hard-linking** its files into the several-shard layout rather than copying
+them, and swapped in with one rename.
+
+**Deleting rows.** `moleculo index delete <db> --id ID` or `--ids-file FILE`
+names molecules by the identifier in your input, never by row id — a row id
+means something only until the next rebuild. A deleted row is gone from every
+answer: over the first 200 000 lines of ChEMBL — 199 997 molecules — with 10 001
+deleted, the database answers
+**56 of 56 corpus queries identically to the same corpus rebuilt without them,
+in every field**. An identifier that matches nothing is named in the output. ⚠
+**Deletion frees no disk space until a rebuild**, and `index inspect` now shows
+the built count beside the live one so you can see what a rebuild would reclaim.
+
+⚠ **`recordsTotal` now counts the rows a client can still retrieve**, not the
+rows the index was built from. On a database with nothing deleted — every
+database before this release — the two are the same number and nothing you see
+changes. It has to count live rows: a similarity search promises that
+`recordsFiltered` equals `recordsTotal` and that the histogram sums to it, and
+counting built rows would break both at once on the first deletion.
+
+**Fixed, and it was in every earlier release: a repeated search after a reload
+answered from the collection that was there before.** A database that gained a
+shard and was reloaded kept answering an *identical* request with the old count
+— 83 710 hits over 100 486 rows, beside a `recordsTotal` of 199 997 in the same
+response — while any other query saw the whole database. The result cache was
+keyed by the database's name, and the name is what did not change; it is keyed
+by what the database holds now. Nobody had seen it because nothing had ever
+changed a database under a running server before `--build-dir` and reload made
+it routine.
+
+⚠ **Neither command has an HTTP route, deliberately.** The server has no
+authentication, and a destructive route in front of it would be a delete button
+for anyone who can reach the port. Both run on the machine that holds the index,
+and a running server sees the change at its next reload — pass `--notify` to
+ask for one.
+
+**What is not known.** The deletion check runs on every row of every scan; with
+nothing deleted it costs a bounds check, and its cost with a full bitmap on a
+billion-row shard has not been measured. On a 7 420-molecule benchmark the
+difference was below what this laptop can resolve, which is no measurement, not
+no cost.
+
 ## 0.22.1 — 2026-09-09
 
 **No rebuild; only `fmt=sdf` output changes.**

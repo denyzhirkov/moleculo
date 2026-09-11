@@ -24,7 +24,7 @@ structures never leave the process.
 - [Running the server](#running-the-server)
 - [Searching](#searching) — the four query types
 - [Getting results out](#getting-results-out)
-- [Operating it](#operating-it) — adding data, several sources, reloading, a missing shard
+- [Operating it](#operating-it) — adding data, appending and deleting without a rebuild, reloading, a missing shard
 - [The search page](#the-search-page) — draw a query, read the results, keep what matters
 - [What this is measured against](#what-this-is-measured-against) — RDKit, Arthor, where this loses and where the answer is better
 - [Which of these you actually want](#which-of-these-you-actually-want)
@@ -160,9 +160,13 @@ build already accepted. Refusals are measured on the re-fetched file now, all
 ## Building an index
 
 An index is a derived artifact: reproducible from the input and the builder
-version, safe to delete and rebuild, and never edited in place.
+version, and safe to delete and rebuild. **A shard is never edited in place.** A
+database can gain a shard or a set of deleted rows without a rebuild — see
+[Adding to a database](#adding-to-a-database-without-rebuilding-it) and
+[Deleting rows](#deleting-rows) — and both write a new file beside the old and
+swap it in, so a reader never sees half of either.
 
-⚠ **Indexes built before this release must be rebuilt.** The packed molecule
+⚠ **Indexes built before 0.8.0 must be rebuilt.** The packed molecule
 changed shape — an atom with no unusual property now costs one byte instead of
 two, and a bond that continues the chain costs its flags byte and nothing else —
 so the index format moved from version 2 to 3. A shard of the older version is
@@ -953,6 +957,71 @@ A higher generation is required, not optional. Row identifiers are stable only
 within one generation, so reusing the number would leave one identifier with two
 meanings and no way for a client holding identifiers across the swap to notice.
 
+### Adding to a database without rebuilding it
+
+```sh
+moleculo index append ./indexes/mydb new-compounds.smi
+```
+
+The new molecules become one more shard of the database. **Nothing already
+there is touched**, and the result is the index a full rebuild of both inputs
+would have written — **byte for byte, all ten files of every shard**, measured
+on the first 200 000 lines of ChEMBL cut in two, and served side by side the two
+answer 56 of 56 corpus queries the same. Row identifiers of existing molecules
+do not move, so a client holding them across the append keeps valid ones.
+
+⚠ **A database built as a single shard is converted, without copying it.** That
+is the form `index build` writes by default, so it is probably the form yours is
+in. `append` gives it the several-shard layout by *hard-linking* the existing
+files into place — they are not duplicated, which matters at eleven gigabytes —
+and swaps the result in with one rename. At every instant a reader could look,
+the directory is a valid database.
+
+A running server sees the new shard at its next reload; pass
+`--notify http://localhost:8080/admin/reload` to ask for one when the append
+finishes.
+
+### Deleting rows
+
+```sh
+moleculo index delete ./indexes/mydb --id CHEMBL25 --id CHEMBL1201585
+moleculo index delete ./indexes/mydb --ids-file withdrawn.txt
+```
+
+Name molecules **by the identifier in your input** — the second column. ⚠ **Not
+by row id**: a row id means something only until the next rebuild, so a list of
+them that outlives one would delete different molecules and say nothing.
+
+```
+  shard 0    5025 newly deleted, 5025 deleted in all
+  shard 1    4976 newly deleted, 4976 deleted in all
+10001 rows deleted across 2 shards
+a running server picks this up at its next reload
+```
+
+An identifier that matches nothing is **named** in the output rather than
+counted, because it is usually a typo or the wrong database. Deleting a row that
+is already deleted changes nothing and says **0**. ⚠ An identifier your
+collection holds twice deletes both, and the count says so.
+
+**A deleted row is gone from every answer**: searches, similarity, formula,
+identity and every export. Over the first 200 000 lines of ChEMBL — 199 997
+molecules — with 10 001 rows deleted, the database answers **56 of 56 corpus queries identically to the
+same corpus rebuilt without them — in every field**, hits, identifiers and
+counts alike.
+
+⚠ **`recordsTotal` counts the rows a client can still retrieve**, not the rows
+the index was built from. It has to: for a similarity search Arthor promises
+`recordsFiltered` equals `recordsTotal` and the histogram sums to it, and
+counting built rows would break both at once. `moleculo index inspect` shows the
+built count beside the live one, and the difference is what a rebuild would
+reclaim — **deletion frees no disk space until then**.
+
+⚠ **There is no HTTP route for this, deliberately.** The server has no
+authentication (see [Security](#security)), and a destructive route in front of
+it would be a delete button for anyone who can reach the port. Delete on the
+machine that holds the index; the server picks it up at its next reload.
+
 ### When a shard is missing
 
 A sharded database whose shard directory has gone — a disk that failed, a copy
@@ -1398,7 +1467,9 @@ Everything else on the list does something this does not.
   of those merges go through the "largest fragment is the compound" rule**,
   which cannot tell a counter-ion from a second active ingredient. Shown to a
   chemist that population is informative; acted on, it silently deletes distinct
-  substances.
+  substances. When *you* have decided a row should go, that is
+  [`index delete`](#deleting-rows), by identifier — `identity` will tell you
+  which rows share a compound and never act on it.
 
   ⚠ **A combination product answers for its larger drug and is missing from the
   smaller one's answer.** A row holding two actives files under whichever
