@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.24.0 — 2026-09-25
+
+**No rebuild. The index format is written down, a coordinator can tell when its
+parts run different builds, and the row column in a result is now unique across
+the whole database.**
+
+**The index format is specified: [`INDEX-FORMAT.md`](INDEX-FORMAT.md).** It
+covers the header, the file kinds, `database.json`, the manifest, the block
+store, the row id and the deletion bitmap. That is enough to write a program
+that lists what a database holds without this software. To test it, a reader
+was written from the document alone, with no access to the source. It agrees
+with `index inspect` on every shard, and with a served search on the hash of
+the live identifiers, including on a database that had been appended to and
+deleted from. **Version 3 is frozen.** It is the format 0.8.0 introduced, so
+nothing you have built needs rebuilding.
+
+**`geometry=1` is the `qopts=G` lock under a parameter name of our own.** Both
+spellings resolve to the same lock. ⚠ **Keep writing `qopts=G`.** Arthor ignores
+parameters it does not know, so a client that sends `geometry=1` to Arthor gets
+an unlocked answer and no error. `qopts=G` gets a `400` there, which is the
+answer you want. The parameter exists for the day Arthor gives `G` a meaning of
+its own. `qopts=G&geometry=0`, a value other than `1` or `0`, and `geometry` on
+a similarity search are each a `400`.
+
+**Every response carries `x-moleculo-version`, and a coordinator warns when a
+part runs a different build.** A merged answer names the part and both versions
+in `warning`. It warns rather than refuses, so you can upgrade machines one at a
+time and the database keeps serving. ⚠ Read the warning anyway. A 0.23.0 part
+ignores `geometry=1` completely and returns the unlocked answer: 207 rows where
+this build returns 101 on the same index. Parts older than this release send no
+version at all, and the coordinator names them for that too. **Upgrade the parts
+before the coordinator**, or accept that the warning fires until you have.
+
+⚠ **The second column of a result is now the row id,
+`(shard << 32) | local`.** On a single-shard database, which is the default,
+that is the same number as before, and every recorded fixture still passes. On a
+database with several shards, rows after the first shard now carry values from
+4 294 967 296 up. Before, the column restarted at 0 in each shard, and the page
+keys a marked molecule by that column. So marking a row in one shard could
+silently unmark a different molecule in another. Two clicks on a two-shard
+database used to leave **0** marks and now leave **2**. Arthor restarts its
+numbering per index part, so this is a deliberate divergence from it. If you
+kept those numbers anywhere, switch to the identifier: a row id is only valid
+within one index generation. A mark saved in the page by an earlier release on
+a multi-shard database still exports the right molecule, but it can highlight
+the wrong row. Clear marks once after upgrading.
+
+**What is not known.** Nothing about two parts on two *machines* has been
+measured. The coordinator's version check compares version strings, so two
+builds with the same number and different code look the same to it. The largest
+collection served on one machine is still 124 427 347 molecules.
+
 ## 0.23.0 — 2026-09-11
 
 **No rebuild. A database can now grow and shrink without being rebuilt, and one

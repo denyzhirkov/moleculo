@@ -31,6 +31,11 @@ structures never leave the process.
 - [Known limitations](#known-limitations)
 - [Security](#security)
 
+The index format is specified separately, in
+[`INDEX-FORMAT.md`](INDEX-FORMAT.md): enough to write a program that lists what
+a database holds — row ids, original records, which rows are live — without this
+software. Version 3 is frozen.
+
 ---
 
 ## Install
@@ -678,6 +683,16 @@ and Arthor answers `400` to it, which is why it is a letter rather than a query
 parameter — an unknown parameter it *ignores*, so a client would have got a
 different answer with no way to know.
 
+**`geometry=1` is the same lock under a name of ours** — `&geometry=1` beside
+`query=`, values `1` and `0`. Both spellings resolve to one lock before anything
+searches. ⚠ **Reach for `qopts=G`**: point a client that writes `geometry=1` at
+Arthor and it is quietly ignored, where `qopts=G` is refused with a `400`, and a
+refusal is the answer you want there. The parameter exists because `G` is a
+letter in *their* vocabulary and we guessed it was free: on the day they spell
+`G` as something of their own, this is where the lock lives and nothing else
+about your client changes. Asking for both at once in opposite directions —
+`qopts=G&geometry=0` — is a `400` rather than a winner.
+
 ⚠ **Without `G`, a query that draws a stereocentre matches both enantiomers**,
 which is what both Arthor and `RDKit` do by default. Asked on a 3 004-molecule
 collection, Arthor answers 212 for a chiral query and 212 for its mirror;
@@ -804,6 +819,23 @@ A large scan returns **partial results** with `"hasMore": true`. Repeat the
 identical request until it comes back `false`; only then have the counts
 converged. Reading `recordsFiltered` from the first response gives you a partial
 count that looks exactly like an answer.
+
+The second column is the **row id**: `(shard << 32) | local`, unique within a
+database and stable for an index generation. On a single-shard database — the
+default — it is simply the row's position, so nothing about it looks new. On a
+database of several shards the rows of the second shard start at 4 294 967 296,
+which is that arithmetic rather than a large number for its own sake.
+
+⚠ **It is not a key across rebuilds**, and it is not what to write down: a row id
+means something only inside one index generation, so anything you keep — a
+selection, an export, a list to delete — should carry the `Identifier`. The
+`index delete` command takes identifiers for the same reason.
+
+⚠ **This diverges from the reference deliberately.** Arthor puts a position
+*within an index part* there, which repeats across the parts of one database —
+measured on its own `REAL-Database-22Q1`, where index 3 appears twice in a
+single answer. Our page keys a marked molecule by that column, and while it
+repeated, marking a row could silently unmark a different molecule.
 
 A complete client is a dozen lines:
 
@@ -1108,6 +1140,17 @@ similarity's ranking and histogram, an identity, and the three text formats,
 all identical to one server holding both shards. Nothing about throughput on
 two machines has been measured, and this README does not claim a number for it.
 
+
+⚠ **Run one build everywhere, and the coordinator tells you when you have not.**
+Every server stamps its version on each response (`x-moleculo-version`), and a
+coordinator that receives an answer from a part on another build says so in the
+`warning` of every result it merges, naming the part and both versions. It
+**warns rather than refuses**, so upgrading machines one at a time keeps the
+database serving — but read that warning: an older part answers by older rules,
+and the one that bites is silent. A 0.23.0 part ignores `geometry=1` entirely
+and returns the unlocked answer, which is 207 rows where this build returns 101.
+A part older than 0.24.0 stamps nothing at all, and the coordinator names it for
+that too.
 ### Watching it from the outside
 
 New in 0.6.0. Operator events go to **stderr** as structured lines, so stdout
