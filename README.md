@@ -24,7 +24,7 @@ structures never leave the process.
 - [Running the server](#running-the-server)
 - [Searching](#searching) — the four query types
 - [Getting results out](#getting-results-out)
-- [Operating it](#operating-it) — adding data, appending and deleting without a rebuild, reloading, a missing shard
+- [Operating it](#operating-it) — adding data, appending and deleting without a rebuild, reloading, a missing shard, stopping, probes, metrics
 - [The search page](#the-search-page) — draw a query, read the results, keep what matters
 - [What this is measured against](#what-this-is-measured-against) — RDKit, Arthor, where this loses and where the answer is better
 - [Which of these you actually want](#which-of-these-you-actually-want)
@@ -35,6 +35,11 @@ The index format is specified separately, in
 [`INDEX-FORMAT.md`](INDEX-FORMAT.md): enough to write a program that lists what
 a database holds — row ids, original records, which rows are live — without this
 software. Version 3 is frozen.
+
+What 1.x promises, and what it deliberately does not, is
+[`COMPATIBILITY.md`](COMPATIBILITY.md): the wire, the command line, the
+configuration, the on-disk format and the metric names are stable. An answer
+moves only in a minor release, and only under a heading that says so.
 
 ---
 
@@ -386,6 +391,11 @@ other way round.
 | `--enable-index-control` | `MOLECULO_ENABLE_INDEX_CONTROL=1` |
 | `--enable-upload` | `MOLECULO_ENABLE_UPLOAD=1` |
 | `--no-search-limit` | `MOLECULO_NO_SEARCH_LIMIT=1` |
+| `--no-tautomer-report` | `MOLECULO_NO_TAUTOMER_REPORT=1` |
+| `--part` | `MOLECULO_PARTS` (comma separated; the flag repeats, once per part) |
+| `--shutdown-grace-seconds` | `MOLECULO_SHUTDOWN_GRACE_SECONDS` (default 30) |
+| `--shutdown-delay-seconds` | `MOLECULO_SHUTDOWN_DELAY_SECONDS` (default 0) |
+| `--access-log` | `MOLECULO_ACCESS_LOG=1` |
 
 ⚠ **It refuses rather than guesses, at startup rather than at the first
 request.** Three cases are worth knowing because each is a mistake that used to
@@ -543,12 +553,12 @@ download, including the leak checking that keeps a builder's home directory out
 of it.
 
 ```sh
-docker build --build-arg VERSION=0.7.0 \
-             --build-arg TARGET=x86_64-unknown-linux-musl -t moleculo:0.7.0 .
+docker build --build-arg VERSION=1.0.0 \
+             --build-arg TARGET=x86_64-unknown-linux-musl -t moleculo:1.0.0 .
 
 docker run --rm -p 8080:8080 \
   -v /srv/indexes:/databases:ro \
-  moleculo:0.7.0
+  moleculo:1.0.0
 ```
 
 - **Databases are mounted, never baked in.** A molecule collection is your
@@ -1151,6 +1161,158 @@ and the one that bites is silent. A 0.23.0 part ignores `geometry=1` entirely
 and returns the unlocked answer, which is 207 rows where this build returns 101.
 A part older than 0.24.0 stamps nothing at all, and the coordinator names it for
 that too.
+### Stopping it
+
+`SIGTERM` or `SIGINT` (Ctrl-C) **drains** the server rather than killing it:
+
+1. **announce**: for `--shutdown-delay-seconds` (default **0**), `/readyz`
+   answers `503` and `moleculo_draining` reads `1`, while connections are still
+   accepted and served;
+2. **close**: no new connection is accepted;
+3. **finish**: what is in flight completes, for at most
+   `--shutdown-grace-seconds` (**30 by default**, a search's own deadline);
+4. the process exits `0` and logs either that every connection closed on its
+   own, or that the grace ran out and how many requests were still being
+   answered. ⚠ Read that count as a floor: a client that has sent half a
+   request, or is still downloading a large result, holds a connection with
+   nothing being answered, and it is closed too.
+
+A **second** signal exits at once with status `130`, for when you meant it.
+
+⚠ **With no announce phase, readiness never fails where anything can see it.**
+The listener closes the moment the drain begins, so a probe gets *connection
+refused* rather than a `503`. That still takes the server out of rotation, and
+under Kubernetes it is all you need (below). A load balancer that learns only
+by polling `/readyz`, such as an HAProxy or nginx health check, should get
+`--shutdown-delay-seconds` set to its check interval times the failures it
+waits for. It then stops sending work before anything is refused.
+
+⚠ **Your supervisor must wait longer than delay plus grace, or it kills the
+drain.** Docker waits 10 seconds by default, so use `docker stop -t 40` or
+`stop_grace_period: 40s` in Compose. Kubernetes waits 30, so set
+`terminationGracePeriodSeconds: 40`. systemd's default of 90 is already enough.
+
+⚠ **What a stop does not keep**: a structure search that is still converging
+across polls (`hasMore: true`) lives in this process's memory, so a client
+polling across a restart starts again from the first poll. That is the
+protocol working as designed, not data loss, because nothing is stored.
+
+### Probes: `/healthz` and `/readyz`
+
+| route | answers `200` when | use it for |
+|---|---|---|
+| `GET /healthz` | the process is up and its runtime answers | liveness: restart if this fails |
+| `GET /readyz` | at least one database is served and no stop has begun | readiness: send traffic only when this passes |
+
+During a stop's announce phase `/readyz` answers `503` with `"status":
+"draining"`, and `/healthz` still answers `200`: stopping is not dying, and
+a liveness failure then would only get the drain killed.
+
+Both are always on, cheap, and outside `/dt/`, so they cannot collide with the
+Arthor API. ⚠ **A degraded database does not fail readiness.** It is listed in
+the body (`"degraded": ["mydb"]`) and the rest keep serving, because one
+missing shard must not take every other database out of rotation. Alert on
+`moleculo_database_degraded` instead.
+
+⚠ **Neither probe waits behind a search.** Searches, reloads and uploads run on
+threads of their own, so a server whose every search slot is busy still
+answers its probes in milliseconds. Through 0.24.0 it did not: a full pool held
+every thread the runtime had, and a liveness probe would have failed on a
+busy, healthy server. ⚠ One limit remains, and only under `--no-search-limit`:
+with no admission pool, more than 512 searches at once fill the runtime's
+blocking threads, the rest wait where no metric can see them, and a reload or
+an upload waits behind them. The pool is the bound, which is one more reason
+not to remove it on a server anyone else can reach.
+
+The container image has a `HEALTHCHECK` on `/readyz`. A server started with
+`--build-dir` builds any pending sources **before** it listens, which can take
+hours on a large collection, and it reads *unhealthy* until the build is done.
+In Kubernetes, cover that with a `startupProbe` rather than a longer liveness
+timeout:
+
+```yaml
+containers:
+  - name: moleculo
+    image: moleculo:1.0.0
+    ports: [{ containerPort: 8080 }]
+    startupProbe:
+      httpGet: { path: /healthz, port: 8080 }
+      periodSeconds: 10
+      failureThreshold: 360        # an hour to open, or to build at startup
+    livenessProbe:
+      httpGet: { path: /healthz, port: 8080 }
+      periodSeconds: 10
+    readinessProbe:
+      httpGet: { path: /readyz, port: 8080 }
+      periodSeconds: 5
+    lifecycle:
+      # Runs before SIGTERM. Kubernetes starts removing a terminating pod from
+      # its Service at the same moment, and the pause keeps this server
+      # answering until every proxy has heard. Use this or
+      # --shutdown-delay-seconds, not both.
+      preStop: { exec: { command: ["sleep", "5"] } }
+terminationGracePeriodSeconds: 40
+```
+
+A systemd unit that drains on `systemctl stop`:
+
+```ini
+[Service]
+ExecStart=/usr/local/bin/moleculo serve /srv/indexes --port 8080
+KillSignal=SIGTERM
+TimeoutStopSec=40
+Restart=on-failure
+User=moleculo
+```
+
+### Metrics: `/metrics`
+
+Prometheus text format, always on, on the same port as everything else:
+
+| metric | type | labels |
+|---|---|---|
+| `moleculo_build_info` | gauge | `version` |
+| `moleculo_start_time_seconds` | gauge | |
+| `moleculo_draining` | gauge | |
+| `moleculo_http_requests_in_flight` | gauge | |
+| `moleculo_http_requests_total` | counter | `route`, `method`, `status` |
+| `moleculo_http_request_duration_seconds` | histogram | `route` |
+| `moleculo_searches_total` | counter | `type` (`substructure`, `smarts`, `similarity`, `formula`, `identity`, or `unknown` for a `type=` that is not one of them), `status` |
+| `moleculo_search_slots` | gauge | `state` (`running`, `capacity`) |
+| `moleculo_search_queue` | gauge | `state` (`waiting`, `capacity`) |
+| `moleculo_database_degraded` | gauge | `database` |
+| `moleculo_database_rows` | gauge | `database` |
+| `moleculo_parts_databases` | gauge | |
+
+⚠ **`route` is the template, never the path**: `/dt/:database/search`, not
+`/dt/chembl/search`. A request naming a database nobody holds cannot create a
+label, and neither can an invented HTTP method: `method` is one of the seven
+standard ones or `other`. `database` appears only where the catalog holds that name, so the label
+set is bounded by what you serve, not by what clients send. **No metric carries
+a query**, and the names are part of the 1.x promise.
+
+What to alert on: `moleculo_search_queue{state="waiting"}` near its capacity (a
+`503` is next), `rate(moleculo_searches_total{status="503"}[5m])` above zero,
+and `moleculo_database_degraded == 1`.
+
+### Logging every request
+
+`--access-log` (`MOLECULO_ACCESS_LOG=1`) writes one line per request under the
+target `moleculo::access`:
+
+```
+INFO moleculo::access: request method=GET route=/dt/:database/search database=chembl status=200 elapsed_ms=41
+```
+
+⚠ **It never carries the query.** It logs the route template, the database
+segment of the path as the client sent it (still percent-encoded, so a newline
+cannot forge a log line), the method, the status and the time. It reads nothing
+else: not the query string, not a header, not the body. That is checked by a
+test that drives real searches and finds the query in the log **zero** times.
+Off by default, because the default is one event per *state*, and a line per
+request is a volume you opt into. `RUST_LOG=error` silences it along with
+everything else.
+
 ### Watching it from the outside
 
 New in 0.6.0. Operator events go to **stderr** as structured lines, so stdout
@@ -1169,8 +1331,8 @@ every operator message and none of the noise.
 
 ⚠ **Query structures never appear in a log, at any level.** They are treated as
 confidential intellectual property and a log file is the easiest place to leak
-one; nothing logs a request, and the databases involved are named where the load
-matters. That is checked rather than intended — a run driving searches against a
+one. Only `--access-log` logs a request, and it never logs the query; the
+databases involved are named where the load matters. That is checked rather than intended — a run driving searches against a
 full pool was grepped for the query that produced them, and it appears zero
 times.
 
@@ -1751,6 +1913,11 @@ Everything else on the list does something this does not.
   that hits the bound reports a partial count as partial. Searches also queue
   behind a bounded pool, so a caller issuing them faster than they complete gets
   a `503` rather than turning one deadline into a queue of deadlines.
+- `/metrics`, `/healthz` and `/readyz` answer on the same port as searches.
+  They name databases and count requests, which is no more than `/dt/data`
+  already tells anyone who can reach the port, and **no metric or probe
+  carries a query**. If your monitoring lives outside the perimeter, scrape
+  through the same proxy that guards the rest.
 - ⚠ **There is no authentication, and no per-client rate limiting.** The pool
   bounds the server's own workload; it does not bound *who* may send work. There
   is no notion of a user, a key or an allowed address anywhere in this build.

@@ -1,5 +1,92 @@
 # Changelog
 
+## 1.0.0 — 2026-10-02
+
+**The first major release. The code is identical to 1.0.0-rc.1; only the
+version number changed.** No rebuild is needed, and no answer moved. Every
+index built since 0.8.0 opens.
+
+**What the number promises is [`COMPATIBILITY.md`](COMPATIBILITY.md)**, and
+here is the short form. For all of 1.x, the wire, the command line, the
+configuration, index format v3 and the metric names stay as they are. A
+chemistry fix that changes an answer can only ship in a minor release, and
+only under its own *Answers moved* heading; a patch release never changes an
+answer. What counts as a ring will not change before 2.0.
+
+**Upgrading from 0.x.** Nothing to rebuild and nothing to reconfigure. If you
+skip 0.24.0, read its entry: the row column changed on databases with more
+than one shard. If you run parts, upgrade them before the coordinator. Then
+read the 1.0.0-rc.1 entry below, which lists everything new in 1.0.
+
+**What 1.0 does not claim.** The largest collection served from one machine
+is 124 427 347 molecules. A billion-molecule run was in the original
+definition of done; it is deferred to 1.x by decision, and has not been done.
+Throughput across two machines has not been measured. And as before, **there
+is no authentication**: the port is the security boundary (README §
+*Security*).
+
+## 1.0.0-rc.1 — 2026-09-25
+
+**The release candidate for 1.0. No rebuild, no answer moved, and from here the
+version number is a promise: [`COMPATIBILITY.md`](COMPATIBILITY.md) says what
+it covers.** In short: the wire, the command line, the configuration, index
+format v3 and the metric names are stable for all of 1.x. A chemistry fix may
+change an answer in a minor release, and only under an *Answers moved* heading.
+The ring basis will not change before 2.0.
+
+⚠ **Fixed: under full load, the server could not answer anything else.**
+Searches did their blocking work on the threads that answer every request.
+That work is the wait for a search slot, the similarity scan, the wait for
+first results and the rendering. A reload did the same while building. The
+search pool defaults to one search per core, and so does the thread count, so
+when every slot was busy even a request that needs no slot had to wait. That
+included a health probe, and an orchestrator kills a server whose probe fails.
+Blocking work now runs on threads of its own. A server whose every slot is busy
+answers its probes in milliseconds.
+
+**A stop drains instead of killing.** `SIGTERM` or `SIGINT` first makes
+`/readyz` answer `503` for `--shutdown-delay-seconds` (default 0) while the
+server still accepts. Then it accepts nothing new, and lets what is in flight
+finish for up to `--shutdown-grace-seconds` (default 30). The log says whether
+every connection closed or the grace ran out. A second signal exits at once
+with `130`. ⚠ **Give your supervisor longer than delay plus grace.** Docker's
+default is 10 seconds: use `docker stop -t 40`.
+
+**Probes and metrics.** `/healthz` is liveness and `/readyz` is readiness. A
+degraded database does not fail readiness, so one missing shard does not take
+the others out of rotation. `/metrics` is Prometheus text. It counts requests
+by route template, method and status, with a duration histogram, plus searches
+by type and status, pool occupancy, and live rows and degraded state per
+database. ⚠ No label is taken from what a client sends: routes are templates,
+methods are one of seven or `other`, and databases are the ones you serve.
+**No metric carries a query.** README § *Operating it* has Kubernetes and
+systemd examples.
+
+**`--access-log`** writes one line per request: method, route template,
+database, status and time. ⚠ **It never logs the query.** A test drives real
+searches and finds the query in the log zero times. Off by default.
+
+**Fixed: an interrupted upload could be built as a truncated collection.**
+`POST /dt/upload` wrote straight to `<name>.smi`, which is the name
+`--build-dir` builds. An upload that was cut off by a kill or a full disk left
+a truncated file, and the next reload served it as a database. Now an upload
+is written under a hidden name and moved into place only when it is complete.
+A hidden file that nobody has written to for ten minutes is treated as
+abandoned and removed. On a filesystem without hard links, such as exFAT, SMB
+or most FUSE mounts, it is renamed into place instead.
+
+**Smaller things.** `moleculo --version`. A request whose handler fails
+answers `500 Internal Error` in the usual error shape; before, the connection
+was dropped. The container image has a `HEALTHCHECK` on `/readyz` and an
+explicit `STOPSIGNAL`. The README's settings table was missing four settings:
+it is now complete and checked against the parser by a test.
+
+**What is not known, and not promised.** The largest collection served from one
+machine is still 124 427 347 molecules. The billion-molecule run is moved to
+1.x by decision, not done. Nothing has been measured on two machines. A drain's
+count of requests in flight is a floor: a client that has sent half a request
+holds a connection with nothing being answered.
+
 ## 0.24.0 — 2026-09-25
 
 **No rebuild. The index format is written down, a coordinator can tell when its

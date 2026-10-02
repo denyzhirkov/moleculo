@@ -10,8 +10,10 @@ the fingerprints and the screening postings are **named and reserved** below,
 not described — those are the search engine, and reading them is not what an
 operator needs from an outside tool.
 
-**Version 3 is frozen** until the next major release of moleculo (decision of
-2026-09-16). A future version will change the header's version field, and a
+**Version 3 is frozen for all of moleculo 1.x** (decisions of 2026-09-16 and
+2026-09-25; [`COMPATIBILITY.md`](COMPATIBILITY.md) says what else 1.x
+promises). It has been the format since 0.8.0, so every index built since then
+opens in every 1.x release. The next version arrives with 2.0. A future version will change the header's version field, and a
 reader written against this document must refuse what it does not recognise
 rather than guess — see [What a reader must do](#what-a-reader-must-do).
 
