@@ -59,11 +59,19 @@ shasum -a 256 -c ../SHA256SUMS      # optional, SHA256SUMS is in the same releas
 | platform | archive |
 |---|---|
 | macOS, Apple Silicon | `aarch64-apple-darwin` |
-| Linux x86-64 | `x86_64-unknown-linux-musl` |
+| Linux x86-64 (x86-64-v2: Intel since 2008, AMD since 2011) | `x86_64-unknown-linux-musl` |
 | Linux arm64 | `aarch64-unknown-linux-musl` |
 
 The Linux builds are statically linked against musl: no glibc version
 requirement, and they run on any distribution with a matching CPU.
+
+⚠ **From 1.1.0 the x86-64 build needs an `x86-64-v2` CPU**, with `POPCNT` and
+SSE4.2: any Intel processor since Nehalem (2008) and any AMD since Bulldozer
+(2011), which is the baseline RHEL 9 already requires. Older processors stop
+at the first instruction they lack (`Illegal instruction`), not at a wrong
+answer. Similarity scoring is popcounts, and baseline x86-64 has no popcount
+instruction. The server names what its build uses at startup:
+`similarity kernel: popcnt`.
 
 ---
 
@@ -331,15 +339,20 @@ Measured on one corpus, one machine and one commit, differing only in
 
 | | `zstd` (default) | `none` |
 |---|---:|---:|
-| similarity, ten threads | 88 M molecules/s | **580 M/s** |
-| similarity, one thread | 10 M/s ⚠ | 53 M/s ⚠ |
+| similarity, ten threads | 88 M molecules/s | **553 M/s** |
+| similarity, one thread | 14 M/s | 116 M/s |
 | substructure scan | unchanged | unchanged |
 | fingerprint column, 2.9 M molecules | 95 MB | 188 MB |
 | whole index, 2.9 M molecules | 0.39 GB, 133 B/mol | 0.49 GB, 168 B/mol |
 
-⚠ The two single-thread figures are marked because they were measured on an
-earlier build and have not been retaken; every other number in the table is from
-this one. The ten-thread row is the operative one either way.
+Measured at 1.1.0 on ChEMBL (2 897 806 molecules), built twice from one input
+with only `--fp-codec` changed. The figures are medians of three rounds, each
+alternating with 1.0.0 on the same index, which read 84 and 327 M/s on ten
+threads and 13 and 89 on one. ⚠ **The ten-thread `none` figure is the noisiest
+in the table**: its three rounds ran from 415 to 756 M/s on a laptop whose load
+average stood near 20. The previous release's 580 sits inside that range.
+Read it as "several hundred million per second". On a quiet machine, measure
+it yourself.
 
 The substructure scan does not move because it never reads that column, which is
 the check that says the rest of the table is real. **Compression stays the
@@ -1082,6 +1095,30 @@ thing that tells you the collection searched is not the collection you asked
 about. A database whose every shard is gone is refused outright rather than
 served as an empty one.
 
+**A shard found damaged while searching is treated as a missing one.** An
+index opens without reading its stores end to end, so a damaged block in the
+middle of `fp.col` or `mol.pack` is found by the first search that walks over
+it. That search does not return what it had read up to that point. The server
+logs the file, the block and what was wrong, once, at error level. It serves
+the shard as missing from then on and answers the same request from the rest,
+with the warning naming the shard (`shard 3 (corrupt: fp.col block 41: …)`).
+**After you rebuild the shard**, it serves again at the next reload
+(`POST /admin/reload`, with `--enable-reload`) or the next restart. The server
+recognises the new files because a rebuild gives them a new identity on disk, so
+there is nothing to clear by hand. A file restored from a backup counts as new
+if the restore puts a new file in place: removing the damaged one first,
+renaming into place, or `rsync`'s default. ⚠ Copying over the existing file
+with `cp -p` keeps its inode and its timestamps, so it looks unchanged, and only
+a restart serves it again.
+
+⚠ **Until 1.1.0 a damaged block made a search stop and answer as though
+complete**: one overwritten byte made a similarity search score 2 003 of
+3 004 rows with no warning. ⚠ **What is still not detected** is damage inside a
+record that leaves its length intact, such as a flipped bit in a fingerprint.
+That reads as a different fingerprint, and the scores built on it are wrong.
+Block checksums that would catch it are part of the next index format (2.0).
+Until then, a filesystem that checksums data (ZFS, btrfs) is the defence.
+
 ### A database on more than one machine
 
 A collection that does not fit one box is served as **parts**: every part is an
@@ -1489,7 +1526,7 @@ rather than assumed:
 
 | | Arthor demo (4.2.4) | this build |
 |---|---|---|
-| similarity, resident database | 3 300 M molecules/s at 1.647 B, 256-bit | 88 M/s default, **580 M/s** with `--fp-codec none` — ten threads, 512-bit, 2.9 M |
+| similarity, resident database | 3 300 M molecules/s at 1.647 B, 256-bit | 88 M/s default, **553 M/s** with `--fp-codec none` — ten threads, 512-bit, 2.9 M, a noisy median (see above) |
 | largest database served | 15.18 B molecules | 124.4 M verified end to end |
 | substructure hit count | capped at 20 000 | exhaustive, or an honest floor |
 | index size | not published | **92.5 bytes per molecule** — 124 427 347 molecules in 16 shards, 11.5 GB, built by 0.17.0 (⚠ this row read 84.3 for three releases, a figure no other document carried; the 0.16.0 screen costs +7.1% and the rest is the corpus) |

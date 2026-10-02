@@ -1,5 +1,46 @@
 # Changelog
 
+## 1.1.0 — 2026-10-02
+
+⚠ **The x86-64 build now needs an `x86-64-v2` CPU**: `POPCNT` and SSE4.2, which
+means any Intel processor since 2008 and any AMD since 2011. RHEL 9 already
+requires the same. An older processor stops with `Illegal instruction` at
+startup; it does not give wrong answers. The server logs
+`similarity kernel: popcnt` when it starts. No rebuild is needed, and no answer
+moved: none of the pinned hit sets changed.
+
+**Similarity is faster: −28.3% per search with `--fp-codec none` and −4.1% with
+the default `zstd`** (`perf-compare.sh` on this machine, with every other
+benchmark inside its own spread). The fingerprints are now read in place
+instead of being copied, and the 512-bit comparison is laid out at its fixed
+width so the compiler can vectorise it. Scores are unchanged bit for bit: every
+row was checked against the reference at three widths and with both codecs.
+⚠ With the default codec, about 85% of a similarity scan is decompression,
+which is why the default moves less. A faster fingerprint encoding is planned
+for 2.0.
+
+**Fixed: a damaged index answered as though it were whole.** An index opens
+without reading its stores end to end. When a search walked into a damaged
+block, it stopped there and returned what it had: one overwritten byte made a
+similarity search score 2 003 of 3 004 rows, with no warning. A selective
+search could return no hits at all. Now the first search that finds damage
+logs the file, the block and what was wrong, once, at error level. The shard
+is then **served as missing**, exactly as a shard whose directory has gone:
+answers cover the remaining shards, the warning names the damaged one, and a
+database with no shards left is refused. A rebuilt shard serves again at the
+next reload or restart. `index delete` refuses to run over a damaged store
+rather than reporting identifiers as not found. ⚠ **Not yet detected**: damage
+that leaves a record's length intact, such as a flipped bit inside a
+fingerprint. Block checksums for that are in the 2.0 index format.
+
+**Also fixed.**
+- If one of a parallel scan's worker threads failed, the blocks it was
+  scanning were silently dropped, and the answer counted fewer rows than it
+  claimed. Such a search now returns `500 Internal Error` instead of a short
+  answer.
+- Logs written to a file, journald or `docker logs` contained terminal colour
+  codes. Colour is now used only when the output is a terminal.
+
 ## 1.0.0 — 2026-10-02
 
 **The first major release. The code is identical to 1.0.0-rc.1; only the

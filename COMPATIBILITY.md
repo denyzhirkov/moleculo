@@ -70,6 +70,9 @@ that worked on 1.a stop working, or start meaning something else, on 1.b. Only
 
 ## Not promised, deliberately
 
+- **The oldest CPU a build runs on.** A minor release may raise it, and when it
+  does, the changelog says so first and README § *Install* names the new
+  floor. 1.1.0 raises the x86-64 build to `x86-64-v2`.
 - **Timings, throughput, memory use and index size.** They are measured and
   published per release, and they move.
 - **Log text.** Events and their fields change as the code does. Alert on
