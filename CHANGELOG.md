@@ -1,5 +1,203 @@
 # Changelog
 
+## 2.0.0-rc.1 — 2026-11-09
+
+⚠ **2.0 does not serve a 1.x index (format 3) until it is converted with `moleculo index migrate`.**
+
+**The release candidate for 2.0. Two measurements are owed before 2.0.0.**
+
+- **The speed claim on the population its bar names.** Against 1.1.0's scan,
+  on one thread, over the first 200 000 rows of PubChem, the 56 corpus queries
+  ran **2.12× faster** summed, and each of the three ring queries `[R2]`,
+  `[r5]` and `[r6]` at least **10.83×** faster. That was measured on
+  2026-10-31, on the development tree of that day (`4db6cff` with the ring
+  lookups merged), and this release has changed the scan path since: the
+  search keeps its state on the heap past 256 placed atoms (below), and a
+  store's blocks are held to stricter checks as they are read. The bar names the first 1 000 000 rows. That run is
+  owed, and it will be taken on the release binary; until it is done, these
+  figures are an indication.
+- **The comparison with Arthor**, on time to the first page and on exhaustive
+  throughput. Every figure README sets beside Arthor's was measured on 1.x and
+  index format 3, and the public instance it was measured against did not
+  answer when last tried, on 2026-11-09.
+
+Everything 2.0 breaks against 1.x, and what 2.x promises, is in
+[`COMPATIBILITY.md`](COMPATIBILITY.md).
+
+### Upgrading an index
+
+**`moleculo index migrate <database>` converts a 1.x index to 2.0's format in
+place**, from the input lines the index already holds — no input file needed.
+Row identifiers, records and deletions are kept; the result is what a fresh 2.0
+build of the same lines writes, so it gives 2.0's answers. It is resumable and
+swaps one shard at a time. See *Upgrading a 1.x index to 2.0* in the README.
+
+**A 2.0 shard records which chemistry rules built it, and one built under
+older rules is served as built and named.** Its index entries in `/dt/data`
+carry an extra `perception` field holding the version it was built with, and
+the server logs one warning per such shard when it opens the database. A
+current shard carries no such field, so `/dt/data` is unchanged for it.
+Searches over such a shard are complete under the rules it was built with and
+carry no warning. Rebuild the shard from its input to take the new rules.
+
+### Index format 4
+
+**Every store carries a checksum, and it is checked as the store is read.**
+`mol.pack` has a CRC-32C per block; `fp.col` its zstd frame checksums, or
+`fp.sum` under `--fp-codec none`; `popcount.col` its `popcount.sum`; `smi.blk`
+its zstd frame checksums, or `smi.sum` under `--codec none`; the offset tables
+and `deleted.roar` a CRC-32C each, checked when the shard opens. 1.1.0 found
+damage only where it broke a record's length, so a flipped bit inside a
+fingerprint read as a different fingerprint and moved the scores. That is
+found now, and the shard is served as missing, as for any other damage.
+[`INDEX-FORMAT.md`](INDEX-FORMAT.md) lists every checksum.
+
+**There is no screening index, so every substructure search scans.** A 1.x
+shard carried an index of the path features its molecules hold, and since
+0.16.0 a substructure search could use it to skip the rows without a rare
+feature the query needed. On an
+8 476 919-row PubChem shard it planned one of the 56 corpus queries, and it
+cost 12–17 bytes a molecule on the three shards measured. `index build
+--screen-codec` goes with it: passing it is now an error. An empty answer
+still names the fragment the database lacks, from the feature counts each
+shard keeps in its manifest.
+
+**The molecule store is LZ4, in blocks of 256 molecules.** The first 1 000 000
+rows of PubChem build to 84.9 bytes a molecule, of which the molecule store is
+40.1, in ten files.
+
+**`index build --codec` now chooses the record store's codec only.** In 1.x it
+covered the molecule store too; in format 4 the molecule store is always LZ4
+HC, so `--codec none` no longer gives an uncompressed one.
+
+**Format 4 is frozen from this release on.** A shard 2.0.0-rc.1 builds is
+expected to open in 2.0.0 unchanged. Should anything before 2.0.0 have to change
+the format, it becomes version 5, announced in the first line of that release's
+entry, and a shard built by this release then needs `index migrate` — the
+no-migration promise of `COMPATIBILITY.md` starts at 2.0.0.
+
+### Answers moved
+
+**A similarity ranking's first 1 000 rows are scored exactly.** The search
+still scores every molecule by its 512-bit folded fingerprint, which is what
+makes the count and the histogram cover the whole collection, but folding
+lets unrelated features share a bit, and for a small query that can decide
+the ranking: `COC` over a 12 000-molecule sample ranked first a bipyridine
+that shares nothing with it. Each database's first 1 000 rows are now scored
+again from their unfolded features and re-ordered by that score, so a row
+whose score was only collisions scores 0 and drops. Below row 1 000 the
+order and the scores are still the folded ones, and a page that reaches
+there says so in `warning`. Manhattan is unchanged. The re-scoring costs
+about 8 ms per search, whatever the database size; on 500 000 molecules that
+more than doubled it, 54 → 120 ms for 8 queries.
+
+**`R<n>` and `r<n>` no longer depend on how a molecule was written.** They
+used to count the rings of a minimal ring basis, and which of two equal rings
+the basis held depended on the spelling: on 21 of 22 fullerene-type cages and
+on about 1 in 100 ordinary PubChem molecules (bridged bicyclics, adamantanes,
+quinuclidines). They now count every relevant cycle, meaning every ring that
+is not a sum of smaller ones, which depends only on the structure. A ring
+system with exponentially many equal rings, such as a cyclodextrin, counts
+each such family once. Against RDKit, the share of molecules
+where any atom's `R` or `r` differs fell from 255 to 5 in 22 423 across the
+three test corpora. The five that remain are named in the documentation: in
+each, RDKit keeps one of two equal rings. In the pinned query set, one answer
+moved: `[R2]` over the REAL Space sample lost three cubanes, whose atoms all lie
+on three faces. Over the first 200 000 rows of PubChem (199 977 molecules),
+1.1.0 and this release's development tree of 2026-10-31 returned identical
+hits on 55 of the 56 corpus queries, and `[R2]` went from 69 421 hits to
+69 332. On prismanes and fully fused belts (cyclacenes, carbon
+nanobelts) we now count the end rings or rims, and RDKit does not: it leaves
+part of the ring structure uncounted. Aromaticity, `identity` and
+the molfile's 2D layout still use the ring basis.
+
+### Search time limits
+
+- **Several databases named in one search now share one `--max-seconds`
+  bound.** The limit used to apply to each database separately, so a search
+  over three databases could run for three times the limit. The README's "per
+  search" now describes what happens.
+- **A search that meets a damaged shard and is rerun without it keeps its
+  deadline.** Each rerun used to start a fresh `--max-seconds`, and up to eight
+  reruns are allowed. A rerun with no time left answers as a search that ran
+  out of time: a similarity search returns `503 Search Timeout`, and a
+  substructure, SMARTS or formula search returns the count so far with
+  `hasMore`. The background count keeps its own `--max-seconds`, so polling
+  still reaches the full answer.
+- **Similarity searches that arrive together are scored in one pass, and each
+  still answers by its own `--max-seconds`.** The pass runs under the deadline
+  of the search in it with the most time, and a search whose time runs out
+  while it waits for a pass gets `503 Search Timeout` then, not when the pass
+  ends. It used to stop at the deadline of the request that started it, which
+  could time out a search that still had time left — and that request was held
+  until no more searches were arriving, however long that took.
+
+### Query bounds
+
+- **A query past 4 096 atoms, or past 512 aromatic atoms counted either as
+  written or after aromaticity is perceived, is a `400 Invalid Query`** with the
+  limit named in `detail`. This applies to SMILES and SMARTS on every route that
+  reads a query: substructure, SMARTS, similarity and `identity`. Such queries
+  used to hold a core for seconds to minutes before any time limit applied (a
+  4 002-atom aromatic ring took 57 s), and answered in the end. The largest real
+  molecules sit far below the limits (ChEMBL: 855 atoms, 400 aromatic). A
+  collection is still read without them. The aromatic limit is read on a
+  SMILES query; a SMARTS query is held to the atom limit and to the three
+  below.
+- **A SMARTS expression nested more than 256 levels, more than two levels of
+  `$()` (`$($(C))` is read, `$($($(C)))` is not), or more than 128 atoms inside
+  all of a query's `$()` together, is a `400 Invalid Query`** naming the limit. Every walk over a
+  query recursed once per level, so a few hundred kilobytes of `[*;*;*;…]`
+  overflowed a thread's stack, and a stack overflow does not fail one request:
+  it stops the whole server. Each `$()` level multiplies the work below it,
+  which is why that limit is two.
+- **Fixed: a query thousands of atoms long could stop the server.** Matching
+  took one stack frame per query atom placed, so such a query against a
+  molecule as long overflowed a worker's stack. Past 256 placed atoms the
+  search now keeps its state on the heap. Answers, mappings and step counts
+  are the same as before, compared on every corpus query over world-drugs.
+- **`identity` says when it could not compare.** A query whose canonical search
+  reaches its work budget answers `key: null`, `complete: false` and a
+  `warning`, where it used to answer an empty `matches` beside
+  `complete: true`. A candidate row that cannot be keyed makes the answer
+  `complete: false`, with the count in `warning`. The budget is counted, not
+  timed, so a `key: null` answer does not change when retried. No ChEMBL or
+  PubChem-sample molecule lost its key. A 161-atom alkane dendrimer and a
+  1 000-atom ring did.
+- **The tautomer note on an empty search answer may be a floor.** It runs under
+  a counted work budget, so it answers the same way on every machine. When the
+  budget stops it, `tautomerFormsComplete` is `false` and the summary says "at
+  least". On a 1-in-100 ChEMBL sample, 0.19% of reports that used to be
+  complete are now floors.
+
+### Also fixed
+
+- **A hit whose record cannot be read retires its shard.** A result page
+  rendered such a hit as a row with an empty `SMILES` column, with the count
+  whole and no warning, and the shard kept serving. Now the shard is served as
+  missing and the request is answered from the rest, with the warning naming
+  it, exactly as for damage a scan meets.
+- **A `database.json` that lists a shard twice is refused.** 1.x opened the
+  shard twice and served its rows twice: a list of `[0, 1, 1]` served 438 rows
+  of a 300-row collection. A list out of ascending order, or one naming a
+  shard id of 2³¹ or more, is refused too, by the server and by `index
+  append`, `migrate` and `inspect`. Only that database goes out of service.
+  Every build, append and migration writes the list ascending, so only a file
+  edited by hand is affected.
+- **Two reloads at once no longer build the same source twice.** With
+  `--build-dir`, two overlapping `POST /admin/reload` requests could both find
+  the same new `.smi` and both start building it, and the second removed the
+  staging directory the first was still writing. A reload that finds a build
+  under way now waits for it, then answers as usual.
+- **An `index append` killed in the middle of its swap is finished by the next
+  one.** Appending to a single-shard database swaps the new layout in with two
+  renames. Killed between them, the database was absent under its own name,
+  and the next append stopped because it could not read it. The next append
+  now finishes that state, after proving by file identity that the two
+  directories are the halves of one append. Any other leftover state is
+  refused, with what each directory holds named and nothing moved. README §
+  *Adding to a database without rebuilding it* has the details.
+
 ## 1.1.0 — 2026-10-02
 
 ⚠ **The x86-64 build now needs an `x86-64-v2` CPU**: `POPCNT` and SSE4.2, which

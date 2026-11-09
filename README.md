@@ -33,13 +33,21 @@ structures never leave the process.
 
 The index format is specified separately, in
 [`INDEX-FORMAT.md`](INDEX-FORMAT.md): enough to write a program that lists what
-a database holds — row ids, original records, which rows are live — without this
-software. Version 3 is frozen.
+a database holds — row ids, original records, which rows are live, the stored
+molecules — and checks every checksum, without this software. It describes
+format version 4, which 2.0 writes; version 3, the frozen format of 1.x that
+`index migrate` reads, is summarised at its end.
 
-What 1.x promises, and what it deliberately does not, is
+What 2.x promises, and what it deliberately does not, is
 [`COMPATIBILITY.md`](COMPATIBILITY.md): the wire, the command line, the
-configuration, the on-disk format and the metric names are stable. An answer
-moves only in a minor release, and only under a heading that says so.
+configuration, index format 4 and the metric names are stable. An answer
+moves only in a minor release, and only under a heading that says so. What
+2.0 changed against 1.x is listed there too, under *Upgrading from 1.x to 2.0*.
+
+⚠ **This is a release candidate, 2.0.0-rc.1.** Its search speed against 1.1.0
+was measured on 200 000 rows, where the bar names 1 000 000, and it has not
+yet been compared with Arthor; 2.0.0 follows both.
+[Known limitations](#known-limitations) says what else is unmeasured.
 
 ---
 
@@ -184,18 +192,14 @@ database can gain a shard or a set of deleted rows without a rebuild — see
 [Deleting rows](#deleting-rows) — and both write a new file beside the old and
 swap it in, so a reader never sees half of either.
 
-⚠ **Indexes built before 0.8.0 must be rebuilt.** The packed molecule
-changed shape — an atom with no unusual property now costs one byte instead of
-two, and a bond that continues the chain costs its flags byte and nothing else —
-so the index format moved from version 2 to 3. A shard of the older version is
-**refused by name**, loudly, rather than read with the wrong rules: this is
-exactly what the version field is for, and it is why the older shards are not
+⚠ **This build reads index format 4 and nothing older.** A shard of format 3,
+which every 1.x release wrote, is **refused by name**, loudly, with the command
+that converts it: see [Upgrading a 1.x index to
+2.0](#upgrading-a-1x-index-to-20). A shard of format 2, built before 0.8.0, is
+refused as a format version this build does not read, and it cannot be
+converted: rebuild it from its input. Neither is read with the wrong rules: this
+is exactly what the version field is for, and it is why an older shard is not
 silently misread into molecules that are garbage wearing a valid shape.
-
-What it buys, measured on 400 000 PubChem molecules: `mol.pack` **−8.1%** and a
-scan **5.2% faster** (30.4 against 28.9 million atoms a second). Across the whole
-index the size figure is about **−2.6%**, because the packed molecule is a third
-of it.
 
 ```sh
 moleculo index build molecules.smi ./indexes/mydb
@@ -216,19 +220,29 @@ count](#choosing-the-shard-count-and-why-eight-is-not-always-the-answer).
 
 | option | meaning |
 |---|---|
-| `--bits N` | similarity fingerprint width: 256, 512 (default), 1024 or 2048. Narrower costs recall, wider costs disk. Fixed at build time — it is a property of the index, not of a query. |
-| `--codec none\|zstd` | compress the molecule and record stores. Default `zstd`. |
-| `--fp-codec`, `--screen-codec` | the same, for the fingerprint column and the screening index. ⚠ `--fp-codec none` is **6.6x the similarity throughput for about 26% more index** — measured, see below. |
+| `--bits N` | similarity fingerprint width: any positive multiple of 64, 512 by default. Narrower costs recall, wider costs disk. Fixed at build time — it is a property of the index, not of a query. |
+| `--codec none\|zstd` | compress the record store, which holds your input lines. Default `zstd`. The molecule store is always LZ4: index format 4 fixes it. |
+| `--fp-codec` | the same, for the fingerprint column. ⚠ `--fp-codec none` is **6.6x the similarity throughput for about 26% more index** — measured, see below. |
 | `--replace` | swap out a shard that is already there. Requires a higher `--generation`. |
 | `--resume` | continue an interrupted sharded build: a shard already sealed is skipped rather than refused. ⚠ Only correct if the input file has not changed — a shard records how many molecules it holds, not which bytes it came from |
 | `--generation N` | index generation. Row identifiers are stable within one generation and only within one. |
+| `--shard N` | the id of the shard this build writes, the high half of every row id in it. Default 0. Refused beside `--shards` of more than 1, which assigns the ids itself, and refused at 2³¹ or more. |
 | `--notify URL` | call a running server's reload endpoint once the shard is published. |
-| `--threads N` | workers for the two screening passes, which are three quarters of a large build. Default: the machine's parallelism. Does not change the shard; does raise memory. |
+| `--threads N` | workers for the pass that counts the screening vocabulary. Default: the machine's parallelism. Does not change the shard; does raise memory. |
 | `--shards N` | split the input into N shards. **Size the shard, not the machine** — see below. |
 | `--build-workers N` | how many shard builds run concurrently. Default: the machine's parallelism. ⚠ **Lower this on slow or networked storage**; it is a bound on concurrent I/O as much as on memory. |
 
 **Plan for the time.** Building is CPU-bound and it is hours rather than minutes
-at scale. Measured on a ten-core laptop:
+at scale.
+
+⚠ **Everything measured below is index format 3 or earlier, which built a
+screening index; format 4 builds none.** Format 4's time at scale has not been
+measured. Its size has, on one sample: the first 1 000 000 rows of PubChem
+(999 972 molecules built) make one shard of **84.9 bytes per molecule**, of
+which the molecule store is 40.1 — named so it is not read as a
+collection-wide figure.
+
+Measured on a ten-core laptop, formats 2 and 3:
 
 | molecules | one core | ten cores | index size | bytes/molecule |
 |---:|---:|---:|---:|---:|
@@ -236,9 +250,11 @@ at scale. Measured on a ten-core laptop:
 | 124.4 M PubChem, one shard | 10 h 43 | **3 h 58** | 10.7 GB | 86.4 ⚠ |
 | 124.4 M PubChem, 16 shards | — | ~18 h at two threads ⚠ | 10.49 GB | **84.34** |
 
-Note which way the density moved. Bigger collections cost *less* per molecule,
-because the screening index compresses better when each feature has more rows in
-it, so sizing from a small trial run overestimates rather than under. On ChEMBL,
+Note which way the density moved. Bigger collections cost *less* per molecule
+on these formats, because the screening index compressed better when each
+feature had more rows in it, so sizing from a small trial run overestimated
+rather than under. ⚠ Format 4 has no screening index, so that mechanism is gone
+from it and the direction is unmeasured. On ChEMBL,
 whose chemistry is heavier, the same build is **133.2** bytes per molecule — the
 range across the corpora tried here is 86 to 133.
 
@@ -260,11 +276,13 @@ directions — ChEMBL grew from 129.5 despite the smaller molecules, because oth
 slices have been added since — which is why neither number is scaled from the
 other.
 
-Three quarters of that is the two screening passes, and they run on as many
-workers as `--threads` asks for. Those two passes go **6.5x faster** on ten
-cores — 8 hours to 74 minutes at 124 M. The whole build gains **2.69x**, because
-reading the input, merging the posting runs and writing the fingerprints are
-sequential and stay so.
+On format 3, three quarters of that was the two screening passes, which ran on
+as many workers as `--threads` asks for and went **6.5x faster** on ten cores —
+8 hours to 74 minutes at 124 M — while the whole build gained **2.69x**, because
+reading the input, merging the posting runs and writing the fingerprints were
+sequential. Format 4 keeps one of those passes, the one that counts the
+vocabulary, on `--threads` workers, and has no posting runs to merge; reading
+the input, encoding the molecules and writing the fingerprints stay sequential.
 
 Parallel work is not free work: ten threads spend **14% more processor time in
 total** than one, since every worker keeps its own copy of the feature counts.
@@ -283,15 +301,20 @@ has. Measured on the same laptop, 50 M PubChem as eight shards:
 
 ⚠ **Budget the memory from that figure, not from one build's.** A single build
 peaks around 211 MB, and eight of those is not 1.7 GB: each shard build runs its
-own screening threads, so the two kinds of parallelism multiply. If the machine
+own counting threads, so the two kinds of parallelism multiply. If the machine
 is smaller, turn `--threads` down as well as `--build-workers`.
 
 ### Choosing the shard count, and why eight is not always the answer
 
-**Size the shard, not the machine.** A shard's postings are spilled to sorted
-runs and then merged, and the merge reads every run at once — so the number of
-open streams during a build is *runs per shard × concurrent builds*. Runs scale
-with shard size, at roughly one 64 MB run per 570 000 molecules:
+**Size the shard, not the machine.** ⚠ **What follows is a format-3 build's
+problem, kept because that is where it was measured.** Format 4 writes no
+postings and spills nothing, so it has no merge to thrash; a shard's size still
+bounds how long its build takes and how much a failed build loses.
+
+On format 3, a shard's postings were spilled to sorted runs and then merged, and
+the merge read every run at once — so the number of open streams during a build
+was *runs per shard × concurrent builds*. Runs scaled with shard size, at
+roughly one 64 MB run per 570 000 molecules:
 
 | molecules per shard | runs | 8 builds at once | 3 builds at once |
 |---:|---:|---:|---:|
@@ -376,6 +399,116 @@ dies leaves nothing behind but the staging directory.
 
 ---
 
+### Upgrading a 1.x index to 2.0
+
+2.0 reads index format 4. An index built by any 1.x release is format 3, and 2.0
+**will not serve it until it is converted**. The server says so at startup and
+names the command:
+
+```
+3 of the 3 shards of ./indexes/mydb are the 1.x index format; convert them with `moleculo index migrate`
+```
+
+Convert it in place:
+
+```sh
+moleculo index migrate ./indexes/mydb
+```
+
+```
+  shard 0    migrated: 163 rows, 4 deleted
+  shard 1    migrated: 137 rows, 2 deleted
+./indexes/mydb is format 4; a server running with --enable-reload picks it up at its next reload, any other at its next start
+```
+
+**You do not need the original input file.** Every 1.x index keeps the input
+line each molecule came from, and the conversion rebuilds the index from those
+lines. What you get is the index a fresh 2.0 build of the same lines would
+write, byte for byte, with three things kept from the old one:
+
+- **every row identifier**, so a client that stored them keeps valid ones;
+- **every record**, exactly as stored: the `SMILES` and identifier columns do
+  not change;
+- **every deletion** made with `index delete`.
+
+⚠ **A 2.0 database can answer a query differently from its 1.x self.** The
+conversion re-reads the chemistry with 2.0's rules, so where 2.0 changed an
+answer (see the changelog's *Answers moved*), the converted database gives the
+new answer. That is the point of converting rather than copying.
+
+⚠ **A molecule 2.0 cannot store is deleted, not dropped.** Dropping it would
+renumber every row after it. Every one is listed in a file beside the database,
+`./indexes/mydb.migrate-refused.tsv` here, which the command names when it
+writes to it: shard, row id, identifier and the reason, one row per line. The
+structure is deliberately not in it — the identifier finds the line in your own
+input. A run that resumes adds to the file rather than replacing it. `index
+inspect` counts these rows among the deleted ones.
+
+⚠ **A line 1.x refused was never in the index**, so it is not in the converted
+one either, even if 2.0 would accept it. Only a rebuild from your input file
+adds it.
+
+**It is safe to interrupt.** Each shard is built beside the old one and swapped
+in once it is complete and on disk; the old shard is removed only once the new
+one opens. If the run stops — a crash, Ctrl-C, a full disk — run the same
+command again. Shards already converted are skipped, and a shard that was
+half-built is started over. A shard that fails keeps its 1.x files untouched; no
+further shard is started, the ones under way finish, and the command says which
+failed and why:
+
+```
+  shard 1    FAILED: No space left on device (os error 28) — its 1.x files are untouched
+moleculo: a shard failed; run the command again to continue — converted shards are skipped
+```
+
+The path may be relative, `.`, or a symbolic link, to the database or to any of
+its shards: each shard is built beside the directory it really is, so a link
+still points at the converted shard afterwards.
+
+**Plan for**:
+- **time**: converting is a build, and it runs like a sharded one. Shards are
+  converted `--build-workers` at a time, the machine's parallelism by default,
+  and `--threads` sets the workers of the one parallel pass inside each, as for
+  `index build`. A database of one shard converts on one worker, as it would
+  build; see the figures above;
+- **disk**: the old database, plus one new shard for each shard being converted
+  at once — up to `--build-workers` of them — since each old shard is removed
+  only after its replacement is complete. The two formats have not been sized
+  on the same collection: format 4 read 84.9 bytes a molecule on the first
+  1 000 000 rows of PubChem, and format 3 read 89.25 on the 10 M PubChem
+  build in the table above, which is a different population. `index inspect` on the first converted shard,
+  beside an old one, tells you for your collection. On a tight disk, lower
+  `--build-workers`;
+- **memory**: as for a sharded build, it multiplies with both settings.
+
+**Stop the 1.x server first.** It keeps the old files open until it exits, so
+their disk space is not given back while it runs, and at its next reload it
+cannot read a converted shard. A 2.0 server pointed at a database part-way
+through serves the converted shards and warns that the rest need converting; it
+picks each one up at its next reload if it runs with `--enable-reload`, and at
+its next start otherwise. Run one conversion per database at a time.
+
+The generation does not change: it marks when a row identifier starts meaning a
+different molecule, and here none does.
+
+⚠ **A 2.0 shard built before a later chemistry change keeps its old answers,
+and says so.** A 2.0 shard stores the chemistry it perceived at build —
+hydrogens, rings, aromaticity — and the version of the rules that produced it.
+After an upgrade that changes those rules, the shard is served as built: the
+server logs one warning per such shard when it opens the database, and
+`/dt/data` adds a `perception` field with the stored version to that shard's
+index entries. Rebuild the shard from its input to take the new rules;
+`index migrate` converts only 1.x indexes.
+
+⚠ **A database answered through other servers** (a coordinator with
+`parts.json`) holds no shards of its own, so the command refuses it. Run it on
+each part's machine, against that part's own copy.
+
+⚠ **A format-4 shard built by a 2.0 pre-release** that this build refuses as
+"must be rebuilt" is not converted: rebuild it from its input. So is a
+converted shard this build cannot open, which should not happen; its 1.x copy is
+then kept beside it, as `<shard>.v3.building`, and the command names it.
+
 ## Running the server
 
 ```sh
@@ -455,11 +588,11 @@ moleculo index estimate molecules.smi
 ```
 
 ```
-molecules      10000000
+molecules      1000000
 sampled        49994 built, 6 refused by the parser
-index size     933.7 MB
-peak disk      1.5 GB  (the sort spills beside the index)
-build time     7 min  ⚠ reads low, see below
+index size     94.2 MB
+peak disk      94.2 MB  (the index itself: nothing temporary is written; --replace also holds the old shard until the swap)
+build time     55 s  ⚠ direction of error unmeasured, see below
 ```
 
 **It measures your data rather than quoting ours.** Fifty thousand of your
@@ -469,19 +602,34 @@ wearing a number — the collections measured here differ by half, from 83 bytes
 molecule to 129.5, and that spread is exactly what decides whether a disk is big
 enough.
 
-⚠ **Two numbers, two directions, both checked against a real 10 M build:**
+**Peak disk is the finished index.** A build writes each file straight to its
+final name in `<name>.building` and publishes it by rename, so nothing
+temporary sits beside it. Measured on the first 1 000 000 PubChem rows with
+2.0.0-rc.1, reading the staging directory every 0.2 s with `du -A` (the bytes
+in its files, in KiB): its largest reading was 82 323 KiB against a finished
+shard of 82 916 KiB, and it held only the shard's own ten files throughout.
+The disk blocks allocated to it, read with plain `du`, peaked at 84 800 KiB
+against the finished shard's 84 812. ⚠ `--replace` keeps the old shard until the new one is swapped in,
+so a replacement needs room for both.
 
-- **Size reads high** — 933.7 MB estimated against 882.0 actual, **+6%**. A
-  feature's postings compress better the more rows hold it, so a full collection
-  costs less per molecule than a sample of it. Provision for this and you will
-  have room.
-- **Time reads low** — 7 minutes estimated against 9 min 20 s actual, **−25%**.
-  A sample small enough to estimate quickly never spills its sort to disk, so
-  the merge a real build pays for is missing from the figure. Allow margin.
+⚠ **Size reads high, and the one measurement of it says why.** The example
+above is that 1 000 000-row input, which built to **81.0 MB** — 84 902 882
+bytes by `index inspect`, in the estimate's unit of 1 024² bytes, the same
+shard as the 82 916 KiB above — so the estimate is **+16%**. Most of the gap is the
+manifest's feature vocabulary, which is close to a fixed cost per shard rather
+than a cost per molecule: 19.6 bytes a molecule in the 50 000-row sample
+against 3.2 in the built shard, and scaling the sample multiplies it. Provision
+from the estimate and you will have room.
+
+⚠ **Time has not been checked against a build on this index format.** One
+estimate and one build, on a machine somebody was using, is no comparison. On
+the previous format time read **−25%** against a real 10 M build, because a
+sample sorted its screening postings in memory where a real build spilled and
+merged them; this format has neither. Allow margin.
 
 Neither is corrected by a fudge factor. One ratio from one comparison is a
 guess, and a guess dressed as a correction is worse than a number with its
-direction attached.
+provenance attached.
 
 The refusal count is worth reading too: molecules this build cannot parse are
 cheaper to find out about now than at hour three.
@@ -515,12 +663,13 @@ hardware. Measured both ways on the same 10 M collection and the same code:
 **24 lines at ten threads, 59 at two.**
 
 ⚠ **`pass_seconds_left` is of the current pass, not of the build.** A build has
-**four** passes over every molecule and they run at different rates — ingest,
-then the two screening passes near 67 000 molecules a second on a ten-core
-laptop, then the fingerprint pass near 126 000 — so a build-wide estimate would
-be a number this cannot honestly produce.
+**three** passes over every molecule and they run at different rates — ingest,
+then the screening vocabulary, then the fingerprints (on format 3, which had a
+fourth, the two screening passes ran near 67 000 molecules a second on a
+ten-core laptop and the fingerprint pass near 126 000) — so a build-wide
+estimate would be a number this cannot honestly produce.
 
-⚠ **Ingest reports in bytes, and it is the only pass that can.** The other three
+⚠ **Ingest reports in bytes, and it is the only pass that can.** The other two
 take their denominator from the shard's manifest, which already knows how many
 molecules it holds. Ingest is the pass that *discovers* that number, so it has
 none to report against; what it has is the length of the input it was handed.
@@ -554,9 +703,12 @@ is tempting. Nothing is lost and nothing needs deleting by hand: **the next buil
 to the same destination removes it**, so a retry reclaims the space. Measured,
 because "it cleans up" and "it cleans up when killed" are different claims.
 
-**Size the disk for roughly twice the finished index** while a build runs. The
-sort spills into the shard's staging directory before the merge reads it back,
-and at 124 M molecules those runs were 6.3 GB beside a 10.7 GB index.
+**Size the disk for the finished index** while a build runs, plus the shard it
+replaces if you pass `--replace`: a build writes nothing temporary, and the
+staging directory is the shard being built. ⚠ The previous index format needed
+about 1.6 times that, because its screening postings were spilled as sorted
+runs beside the index — 6.3 GB beside a 10.7 GB index at 124 M molecules.
+
 
 ### In a container
 
@@ -566,12 +718,12 @@ download, including the leak checking that keeps a builder's home directory out
 of it.
 
 ```sh
-docker build --build-arg VERSION=1.0.0 \
-             --build-arg TARGET=x86_64-unknown-linux-musl -t moleculo:1.0.0 .
+docker build --build-arg VERSION=<version> \
+             --build-arg TARGET=x86_64-unknown-linux-musl -t moleculo:<version> .
 
 docker run --rm -p 8080:8080 \
   -v /srv/indexes:/databases:ro \
-  moleculo:1.0.0
+  moleculo:<version>
 ```
 
 - **Databases are mounted, never baked in.** A molecule collection is your
@@ -616,11 +768,11 @@ as final. Nothing is silently truncated and called complete.
 | `--no-search-limit` | removes all of them. For offline work, not for a server anyone else can reach. |
 
 **Searches queue rather than being refused for arriving together.** Past the
-pool, a search waits for a slot, and the wait is charged against its own
-deadline — one that queued away its thirty seconds is refused rather than
-admitted to do a token amount of work and report a truncated count. `time` in
-the response is the work; `requestTime` is the work plus the wait, so a client
-can tell a busy server from a slow query. Past the queue depth a search is
+pool, a search waits for a slot for at most `--max-seconds`; one still waiting
+then is refused with a `503` rather than left in the queue. Its own
+`--max-seconds` starts when it is admitted, so waiting and working together can
+take up to twice the limit. `time` in the response is the work; `requestTime`
+is the work plus the wait, so a client can tell a busy server from a slow query. Past the queue depth a search is
 refused on arrival, because waiting only to be refused helps nobody.
 
 **Similarity is refused rather than truncated.** A partial substructure count is
@@ -629,7 +781,8 @@ smaller answer but a wrong one, because `recordsFiltered` is defined as the
 collection size and the histogram would become a sample of whichever molecules
 happened to be scored first. If a similarity search does not fit in the limit,
 the response is a `503` saying so — raise `--max-seconds` or search a smaller
-database.
+database. Similarity searches that arrive together share one scan; each still
+answers by its own limit, with its result or the `503`.
 
 ---
 
@@ -649,6 +802,28 @@ GET|POST /dt/{database}/search
 
 Several databases at once: `/dt/db1,db2/search`. Counts sum, every hit carries
 the database it came from, and `partStats` breaks the total down per database.
+
+### Query limits
+
+A structure query is held to five limits, wherever it is read — substructure,
+SMARTS, similarity and `identity`. A query past any of them is a
+`400 Invalid Query` naming the limit, while it is read and before anything is
+searched:
+
+| limit | applies to | why |
+|---|---|---|
+| **4 096 atoms** | SMILES and SMARTS | ring perception and fragment ordering grow with the square of the size, before any deadline is read |
+| **512 aromatic atoms**, counted as written and again after aromaticity is perceived | SMILES | finding a Kekulé form recurses once per pair of aromatic atoms |
+| **256 levels** of nesting in one SMARTS expression (`;`, `,`, `&`, `!` and juxtaposition) | SMARTS | every walk over a query recurses once per level |
+| **two levels of `$()`**: `$($(C))` is read, `$($($(C)))` is not | SMARTS | each level multiplies the work of the levels below it |
+| **128 atoms** inside all of a query's `$()` together | SMARTS | a recursive search runs on the stack of the search that asked for it |
+
+⚠ **These bound the server, not your chemistry.** Past them, one query held a
+core for seconds to minutes before any time limit applied — a 4 002-atom
+aromatic ring took 57 s — or overflowed a thread's stack, which stops the whole
+server rather than failing one request. Of 2.9 M ChEMBL molecules, the largest
+holds 855 atoms and the most aromatic 400 aromatic atoms. A collection is not
+held to these limits: they apply to queries only.
 
 ### Do you already hold this compound?
 
@@ -671,9 +846,19 @@ its lysine salt — and each says **how** it merged and what it set aside.
   "complete": true, "examined": 5, "skipped": 442, "time": 7620 }
 ```
 
-`complete: false` means the wall clock ran out and `matches` is a **floor**.
-`key` is hex because a 128-bit key does not survive JSON's number type; `null`
-means your query has no key, which is not a key of its own.
+`complete: false` means `matches` is a **floor**, for one of two reasons. The
+wall clock ran out, or a canonical search reached its work budget, either on
+your query or on a candidate row. In the second case a `warning` field says
+which. `key` is hex because a 128-bit key does not survive JSON's number type.
+`null` means your query has no key, which is not a key of its own. Such an
+answer always comes with `complete: false` and a `warning`, and an empty
+`matches`.
+
+⚠ **Do not retry a `key: null` answer as if it had timed out.** The budget is
+counted, not timed, so the same query gives the same answer on any machine and
+under any load. A floor with no `warning` ran out of time, and a longer
+`--max-seconds` can change it. A `warning` names something that no amount of
+time will change.
 
 ⚠ **It answers and never acts** — nothing is deduplicated, merged or deleted.
 See [Known limitations](#known-limitations) for the two things to know before
@@ -721,35 +906,17 @@ which is what both Arthor and `RDKit` do by default. Asked on a 3 004-molecule
 collection, Arthor answers 212 for a chiral query and 212 for its mirror;
 `RDKit`'s default answers 207 and 207. `G` is how you say you meant the wedge.
 
-⚠ **A search now rejects rows before it decodes them, and that needs an index
-built by 0.16.0.** Every shard carries a small index of the substructure
-features its molecules hold, and a query that must contain a feature skips every
-row without it. Measured over 199 977 rows and the 56 corpus queries, with every
-hit set asserted identical either way: four queries get a plan and all four win
-— `S(=O)(=O)N` reads **3 801 candidates for 3 712 real hits**, `FC(F)F` 4 673
-for 3 904, `c1cn[nH]c1` 3 264 for 405, and `c-c` is exact at 10 724.
-
-⚠⚠ **That was measured on a 199 977-row prefix, and on an 8 476 919-row PubChem
-shard it is one plan of 56.** Every hit set is still identical to the scan's —
-the property the screen is held to — but the features the sulfonamide, the
-pyrazole and the biaryl need sit above the density ceiling on the real
-collection: `S(=O)(=O)N` is in 7.95% of that shard against 1.86% of the
-prefix, and a feature denser than one row in sixteen is not indexed because
-intersecting it costs more than it saves. **How much your index screens is a
-property of your collection's density profile**, and a figure quoted without
-its shard means nothing. The scan the rest fall through to is the path 0.20.0
-made a fifth faster, and nearly a third on four threads.
-
-⚠ **The other queries are refused a plan and scan, which is correct.** Most
-are bracket SMARTS the planner cannot read, and they name things too common to
-be worth skipping. ⚠ **A fused ring is unscreenable by construction** —
-naphthalene's short paths are the same runs of aromatic carbon as benzene's — so
-`c1ccc2ccccc2c1` scans however your index was built.
-
-⚠ **An index built before 0.16.0 opens, searches and answers correctly. It only
-scans.** What the feature strings mean changed, the shard records which meaning
-it was built with, and a planner that does not recognise it declines rather than
-guessing. Rebuild when convenient; nothing breaks if you do not.
+⚠ **Every substructure search scans: index format 4 has no screening index.**
+A 1.x shard carried a small index of the path features its molecules hold, and
+since 0.16.0 a substructure search could use it to skip every row without a
+rare feature the query had to contain. On an 8 476 919-row PubChem shard it planned **one of the 56 corpus
+queries**, because the features ordinary queries need sit above the density
+ceiling on a real collection, and it cost 12–17 bytes a molecule on the three
+shards measured (two PubChem, one ZINC20), so format 4 drops it. ⚠ **A fused
+ring was unscreenable by construction anyway** — naphthalene's short paths are
+the same runs of aromatic carbon as benzene's.
+Each shard still counts its features into its manifest: that is what explains
+an empty answer.
 
 ### SMARTS — "this nitrogen, in this environment"
 
@@ -767,6 +934,15 @@ Every molecule in the database is scored — the response's `recordsFiltered` is
 the collection size — and the response carries a 256-bucket histogram of the
 score distribution, which answers "how similar is this collection to my query at
 all", not only "what are the top hits".
+
+That pass scores the fingerprint folded to the index's width (`--bits`), and
+folding lets unrelated features share a bit — enough, for a query of a few atoms,
+to rank first a molecule that shares nothing with it. So the first 1 000 rows
+of each database's ranking are scored again from their unfolded features and
+ordered by that score: what you read at the top is exact. Past row 1 000 the
+order and the scores are the folded ones, on their own scale, and a page that
+reaches there says so in `warning`. The histogram and the count are the folded
+pass's. `Manhattan` is normalised by the width and stays folded throughout.
 
 ### Formula — "what do we have with this brute formula?"
 
@@ -817,14 +993,18 @@ It costs about 20 ms on an answer that already found nothing, and
 entirely — the catalogue is then never compiled and the two fields never
 appear.
 
-⚠ `"decisive": false` means the database was built before 0.6.0. Older shards
-open and search exactly as before, but they did not record which fragments are
-merely *common*, so "absent from the index" and "in almost every molecule" look
-alike to them. **`absentFeatures` is then empty and the summary says why** — a
-field named for absence does not get to carry a guess. Rebuilding that database
-is what makes the answer decisive; nothing else about it is affected, and the
-locks are reported either way because they are a fact about the query rather
-than about the collection.
+⚠ `"decisive": false` means a shard of the database cannot tell a fragment that
+is *absent* from one that is merely *common*: its manifest does not record
+which fragments were too common to count, or its feature vocabulary is not this
+build's, or it records no features at all, as a shard with no molecules does.
+Every shard 2.0 builds or converts records which fragments were too common, so
+outside an empty shard this comes from a shard written some other way. To such
+a shard "absent from the index" and "in almost every molecule" look alike.
+**`absentFeatures` is then empty and the summary says why** — a field named for
+absence does not get to carry a guess. Rebuilding that shard is what makes the
+answer decisive; nothing else about it is affected, and the locks are reported
+either way because they are a fact about the query rather than about the
+collection.
 
 ⚠ It costs an index lookup, not a second search — and a search that **found**
 something never computes it at all. The field is absent from every other
@@ -903,10 +1083,11 @@ format reads the line.
 
 ⚠ **A molfile is a drawing, and that is what makes this exact rather than
 approximate.** Nothing in the file *says* cis or trans; a reader works it out
-from where the atoms sit. So the coordinates are checked against `RDKit` over a
-corpus rather than assumed: **78 935** molecules carrying stereochemistry, of
-which **one** comes back as a different isomer. Its cause is named under
-[Known limitations](#known-limitations).
+from where the atoms sit. So the coordinates are checked against `RDKit` over
+five populations rather than assumed: of **76 094** molecules carrying
+stereochemistry, **76 086** agree, **8** state less than they could, and **0**
+state a different isomer. Which populations, the 8, and the one class that can
+still state a wrong isomer are under [Known limitations](#known-limitations).
 
 ---
 
@@ -1036,6 +1217,24 @@ A running server sees the new shard at its next reload; pass
 `--notify http://localhost:8080/admin/reload` to ask for one when the append
 finishes.
 
+**Run one append per database at a time.** It takes no lock, as `index migrate`
+does not either; a second append started before the first finishes can report a
+failure that in fact succeeded, and a retry on that report duplicates a shard.
+
+**If an append of a single-shard database is killed mid-swap**, the next append
+finishes it — but only when what it finds is exactly what an interrupted append
+leaves: `mydb` absent, `mydb.appending.building` the complete new layout, and
+`mydb.old.building` the original shard, the two still hard-linked file for file.
+Anything else — a stale staging beside something a later build parked under the
+same name, a shard that was deleted from while the append ran, a layout that
+does not open — makes it **refuse, name what each directory holds, and move
+nothing**; you decide which copy is the database and `mv` it to `mydb`. An
+append whose result does not open complete puts the original shard back and
+fails, keeping the new layout at `mydb.appending.building` for inspection; the
+next append discards it and builds again. Converting a single shard needs file
+identity (device and inode) to prove the swap, so on a platform without it the
+append refuses before touching anything: rebuild with `--shards` instead.
+
 ### Deleting rows
 
 ```sh
@@ -1113,11 +1312,18 @@ a restart serves it again.
 
 ⚠ **Until 1.1.0 a damaged block made a search stop and answer as though
 complete**: one overwritten byte made a similarity search score 2 003 of
-3 004 rows with no warning. ⚠ **What is still not detected** is damage inside a
-record that leaves its length intact, such as a flipped bit in a fingerprint.
-That reads as a different fingerprint, and the scores built on it are wrong.
-Block checksums that would catch it are part of the next index format (2.0).
-Until then, a filesystem that checksums data (ZFS, btrfs) is the defence.
+3 004 rows with no warning. **Since index format 4 (2.0), damage that leaves a
+record's length intact is caught too**, such as a flipped bit in a fingerprint,
+which in 1.x read as a different fingerprint and moved the scores. Every store
+carries a checksum that is verified as it is read: `mol.pack` a CRC-32C per
+block, `fp.col` its zstd frame checksum or, under `--fp-codec none`, `fp.sum`,
+`popcount.col` its `popcount.sum`, `smi.blk` its zstd frame checksum or, under
+`--codec none`, `smi.sum`, and the offset tables and `deleted.roar` a CRC-32C
+each, checked when the index opens. A record's block is checked every time it
+is read — for a hit on a page, an identity lookup, or a pass over the whole
+store — so a damaged record is never rendered as a different one. A raw
+`smi.blk` from a 2.0 pre-release, built before `smi.sum`, is refused as "must
+be rebuilt". [`INDEX-FORMAT.md`](INDEX-FORMAT.md) lists every checksum.
 
 ### A database on more than one machine
 
@@ -1270,7 +1476,7 @@ timeout:
 ```yaml
 containers:
   - name: moleculo
-    image: moleculo:1.0.0
+    image: moleculo:<version>
     ports: [{ containerPort: 8080 }]
     startupProbe:
       httpGet: { path: /healthz, port: 8080 }
@@ -1326,7 +1532,7 @@ Prometheus text format, always on, on the same port as everything else:
 label, and neither can an invented HTTP method: `method` is one of the seven
 standard ones or `other`. `database` appears only where the catalog holds that name, so the label
 set is bounded by what you serve, not by what clients send. **No metric carries
-a query**, and the names are part of the 1.x promise.
+a query**, and the names are part of the 2.x promise.
 
 What to alert on: `moleculo_search_queue{state="waiting"}` near its capacity (a
 `503` is next), `rate(moleculo_searches_total{status="503"}[5m])` above zero,
@@ -1524,12 +1730,20 @@ earlier session. Neither is evidence about Arthor as a product.
 It is also the engine the performance bar is set by, and that bar was measured
 rather than assumed:
 
-| | Arthor demo (4.2.4) | this build |
+| | Arthor demo (4.2.4) | moleculo 1.x, index format 3 |
 |---|---|---|
-| similarity, resident database | 3 300 M molecules/s at 1.647 B, 256-bit | 88 M/s default, **553 M/s** with `--fp-codec none` — ten threads, 512-bit, 2.9 M, a noisy median (see above) |
+| similarity, resident database | 3 300 M molecules/s at 1.647 B, 256-bit | 88 M/s default, **553 M/s** with `--fp-codec none` — 1.1.0, ten threads, 512-bit, 2.9 M, a noisy median (see above) |
 | largest database served | 15.18 B molecules | 124.4 M verified end to end |
 | substructure hit count | capped at 20 000 | exhaustive, or an honest floor |
 | index size | not published | **92.5 bytes per molecule** — 124 427 347 molecules in 16 shards, 11.5 GB, built by 0.17.0 (⚠ this row read 84.3 for three releases, a figure no other document carried; the 0.16.0 screen costs +7.1% and the rest is the corpus) |
+
+⚠ **That column has not been measured on 2.0.** Every figure in it was taken
+from a 1.x release on index format 3. Format 4 has not been built at
+124 M, so its size and build time at that scale are unknown; on the first
+1 000 000 PubChem rows it reads 84.9 bytes a molecule (see [Building an
+index](#building-an-index)). Similarity in 2.0 also re-scores the first 1 000
+rows of each ranking exactly, which adds about 8 ms a search whatever the
+database size: 54 → 120 ms for 8 queries over 500 000 PubChem rows.
 
 ⚠ **The index-size row is the one number a buyer asks first and it cannot be
 compared**: Arthor publishes no such figure, so ours stands alone rather than
@@ -1568,12 +1782,13 @@ slower with the fingerprint column uncompressed and 37x with the default
 `zstd`**, and the codec is therefore the first thing to change if similarity is
 what a deployment does all day. Of the 5.7x, about 2x is fingerprint width — 512
 bits against their 256, chosen on recall rather than on speed — and the rest is
-cores and memory bandwidth. Sharding is
-within one machine, so Arthor still serves collections a hundred times larger
-than anything verified here. Building a single shard is partly parallel — the
-two screening passes go 6.5x on ten cores, the whole build 2.69x — and building
-shards at once goes past that: **8.17x on eight**, which put 50 M molecules at
-26 minutes 44.
+cores and memory bandwidth. A database can span machines as
+[parts](#a-database-on-more-than-one-machine), but serving across two machines
+has not been measured, so Arthor still serves collections a hundred times
+larger than anything verified here. Building a single shard is partly parallel — on
+index format 3 the two screening passes went 6.5x on ten cores and the whole
+build 2.69x — and building shards at once goes past that: **8.17x on eight**,
+which put 50 M molecules at 26 minutes 44 on that format.
 
 **Where it is ahead: the count is real.** An Arthor substructure search stops at
 20 000 hits. This one either returns the true count or says, in the response,
@@ -1640,6 +1855,34 @@ Everything else on the list does something this does not.
 
 ## Known limitations
 
+- **This is a release candidate, and four things are not yet measured at the
+  scale or against the reference they need.**
+  - **Format 4's build time** has not been measured at scale — not at 124 M,
+    let alone at a billion.
+  - **Format 4's size** has been measured only on 1 000 000-row samples.
+  - **The search speed 2.0 claims against 1.1.0** — 2.12× summed over the 56
+    corpus queries, at least 10.83× on each of the ring queries `[R2]`, `[r5]`
+    and `[r6]`, one thread — was measured on the first 200 000 rows of
+    PubChem, on 2026-10-31, on the development tree of that day; the scan path
+    has changed since. The bar names the first 1 000 000 rows, and that run
+    is owed, on the release binary. Until then the figures are an indication.
+  - **Arthor has not been compared with 2.0**, on time to the first page or
+    on exhaustive throughput: the table under [Arthor](#arthor--the-wire-compatibility-target-and-the-speed-yardstick)
+    is 1.x on format 3, and the public instance did not answer when last
+    tried, on 2026-11-09.
+
+  2.0.0 follows the 1 000 000-row run and the Arthor comparison.
+- **Below row 1 000 of a similarity ranking, the order and the scores are the
+  folded fingerprint's**, and they can read higher than the exact scores above
+  them: folding lets unrelated features share a bit, and mostly inflates a
+  score. On 500 000 PubChem rows, `COC`'s exact head ended at 0.000 with
+  405 472 rows below it printing more. An answer whose page reaches past row
+  1 000 says so in `warning`. The exact top 100 and top 250 lay wholly inside
+  the head for each of the 8 queries measured there.
+- **A query past the size and depth limits is refused**, with a `400` naming
+  the limit — see [Query limits](#query-limits). The largest of 2.9 M ChEMBL
+  molecules sits far below them, and they bound queries only, never a
+  collection.
 - **`fmt=sdf` can state less stereochemistry than it could, and on a fused
   macrocycle it may state a wrong isomer.** Measured against `RDKit` over five
   populations anyone can rebuild — world-drugs, real-space, mcule, and ChEMBL
@@ -1680,7 +1923,7 @@ Everything else on the list does something this does not.
   If you read the earlier text and concluded that a deuterated compound could
   not be searched here, **it could, and it always could.**
 
-  ⚠ **And that last sentence was itself too strong until this release, so it is
+  ⚠ **And that last sentence was itself too strong until 0.11.0, so it is
   corrected rather than quietly repaired.** The *model* always kept the
   deuterium — nothing was lost on the way in, which is what the paragraph above
   says and it is true. But **searching** for one did not work: inside a SMARTS
@@ -1689,7 +1932,7 @@ Everything else on the list does something this does not.
   a query drawn from itself, while the same pattern matched unrelated atoms like
   `[NH+]`. Seventeen two-letter element symbols went the same way: `[Rh]` was
   read as *"in a ring, with one implicit hydrogen"* and `[Rb]` as a
-  contradiction that matched nothing. Fixed in this release, measured at
+  contradiction that matched nothing. Fixed in 0.11.0, measured at
   **3 144 molecules in 497 335** of `PubChem` that could not be found by a query
   written from themselves.
 - **A hit whose structure will not fit V2000 is left out of the SD file** rather
@@ -1777,19 +2020,25 @@ Everything else on the list does something this does not.
   each, **385 — about one in a hundred, a lower bound — have a ring set that
   depends on how they were written**: bridged bicyclics, adamantanes,
   quinuclidines, morphinans, anything where two equal-sized cycles tie. What a
-  query can see of that: `[R2]`, `[R1]`, `[r5]` and `[r6]` never flip at the
-  molecule level — a tie is only ever among rings of one size — but **`[R3]`
-  answers differently on 48 of the 385 depending on the spelling the
-  *collection* stored**, `[N;R2]` on 15 and `[R2][R2]` on 14, which is about
-  0.12% of PubChem answering a count-of-three query by how it was drawn.
-  RDKit's symmetrised ring set does not have this (it keeps every tied ring),
-  and it is exactly what the alternative below would buy.
+  query could see of that through 1.x: **`[R3]` answered differently on 48 of
+  the 385 depending on the spelling the *collection* stored**, `[N;R2]` on 15
+  and `[R2][R2]` on 14. ✅ **Since 2.0, `R<n>` and `r<n>` no longer read the
+  basis.** They count every relevant cycle (one that is not a sum of shorter ones;
+  a family of exponentially many equal rings, as in a cyclodextrin, counts
+  once), a set fixed
+  by the structure: 0 of the 40 000 and 0 of the 22 cages move with the
+  spelling. Against RDKit, the molecules where any atom's `R` or `r` differs fell
+  from 255 to 5 of 22 423 across the three test corpora. In each of the five,
+  RDKit keeps only one of two equal rings, so two symmetric atoms, or one ring
+  system with and without a substituent, get different answers. What still reads the basis is
+  aromaticity, the identity key and the 2D layout of an SD file, and the first
+  two are what the rest of this entry is about.
 
   ⚠ **What using the stable definition would cost is why the owner decided
   against it (2026-09-03).** The ring count would change on **138 503 of
-  9 999 789 PubChem molecules — 1.39%** — and with it every `R` and `r` ring
-  primitive in a SMARTS on those molecules, every hit set built on them, and
-  the aromatic divergences listed below. On C60 the two definitions read 31
+  9 999 789 PubChem molecules — 1.39%** — and with it the aromatic divergences
+  listed below. (It would have moved every `R` and `r` query too; 2.0 moved
+  those separately, as above.) On C60 the two definitions read 31
   rings and 32: the cyclomatic number against the 32 faces, which is Euler's
   relation and not a defect in either. **The ruling is to keep the minimal
   basis and declare this**: `identity` on fullerene chemistry is unreliable as a
@@ -1923,14 +2172,15 @@ Everything else on the list does something this does not.
   bond as this build does and RDKit alone differs.** 185 further disagreements
   are the same furan-in-a-macrocycle cases described above, where RDKit's
   answer is not a function of the molecule, and are left alone deliberately.
-- **Only three quarters of a *single shard's* build is parallel.** The screening
-  passes use every core; reading the input, merging the posting runs and writing
-  the fingerprints do not. Measured on ten cores at 124 M: the parallel passes
-  go 6.5x, one whole build 2.69x. Building several shards at once is what gets
-  past that — 8.17x on eight — and it is the reason `--shards` exists. ⚠ The two
-  multiply for memory: eight concurrent builds measured **3.94 GB** peak, not
-  the 1.7 GB a per-build figure predicts, because each shard build runs its own
-  screening threads.
+- **Only part of a *single shard's* build is parallel.** The pass that counts
+  the screening vocabulary uses every core; reading the input, encoding the
+  molecules and writing the fingerprints do not. Measured on index format 3, at
+  ten cores and 124 M: the parallel passes went 6.5x, one whole build 2.69x.
+  Building several shards at once is what gets past that — 8.17x on eight — and
+  it is the reason `--shards` exists. ⚠ The two multiply for memory: eight
+  concurrent format-3 builds measured **3.94 GB** peak, not the 1.7 GB a
+  per-build figure predicts, because each shard build runs its own threads.
+
 - **No canonical identity across a rebuild of different data.** Row ids are
   stable for an index generation; a rebuild that reuses them for different
   molecules must bump the generation, and nothing checks that for you.
@@ -1945,7 +2195,8 @@ Everything else on the list does something this does not.
   is why they must be reachable only from it.
 - The software performs no outbound network communication other than to those
   parts, sends no telemetry and reports nothing to anyone.
-- A malformed SMILES or SMARTS is a `400`, never a crash.
+- A malformed SMILES or SMARTS is a `400`, never a crash, and so is a query
+  past the size and depth limits in [Query limits](#query-limits).
 - Every search is bounded by wall clock, 30 seconds by default, and a search
   that hits the bound reports a partial count as partial. Searches also queue
   behind a bounded pool, so a caller issuing them faster than they complete gets
