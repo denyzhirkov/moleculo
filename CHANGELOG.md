@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.0.0-rc.2 — 2026-11-09
+
+**The second release candidate for 2.0: one fix to similarity over several
+databases.** It reads every index 2.0.0-rc.1 built, unchanged — format 4, no
+rebuild and no migration. What 2.0.0 still waits for is as rc.1 said: the
+1 000 000-row speed run on the release binary and the comparison with Arthor,
+whose public instance did not answer on 2026-11-09.
+
+### Answers moved
+
+**A similarity search over several databases is one ranking.** Each
+database's best rows used to follow the previous database's, so the first page
+of `/dt/world-drugs,mcule/search` was world-drugs' ranking alone: for aspirin,
+mcule's best match (0.318) was missing from a 20-row page whose 19th row scored
+0.317. The rows of every database named are now ranked together, ties falling
+to the order the databases are named in and then to the row, and the exact
+first 1 000 rows (2.0.0-rc.1) are the first 1 000 of that one ranking rather
+than of each database. The answer is the one a single database holding the
+collections, in that order, gives — row for row, held by a test over two of
+the test corpora. Counts, histograms and searches over one database do not
+move. Databases whose fingerprints differ in width **or radius** are refused
+together; the radius is new, since the exact scores compare identifiers. The
+`warning` on a page past the exact head now reads "rows past the first 1000 are
+ranked…" — it said "of a database", which was true only of one.
+
 ## 2.0.0-rc.1 — 2026-11-09
 
 ⚠ **2.0 does not serve a 1.x index (format 3) until it is converted with `moleculo index migrate`.**

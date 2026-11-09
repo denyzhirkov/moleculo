@@ -62,7 +62,7 @@ converted** with `moleculo index migrate`.
   it. It is the format of 2.0, frozen from 2.0.0-rc.1 on and for all of 2.x.
   Every index that 2.0.0 or a later 2.x release builds opens in every later
   2.x release, with no rebuild and no migration step. ⚠ **A release candidate
-  promises less, and says what**: a shard rc.1 builds is format 4 and is
+  promises less, and says what**: a shard a release candidate builds is format 4 and is
   expected to open in 2.0.0 unchanged, but should anything before 2.0.0 have to
   change the format, that is a new format version, 5, announced in the first
   line of its changelog entry and converted with `index migrate` — never a

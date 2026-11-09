@@ -44,7 +44,7 @@ configuration, index format 4 and the metric names are stable. An answer
 moves only in a minor release, and only under a heading that says so. What
 2.0 changed against 1.x is listed there too, under *Upgrading from 1.x to 2.0*.
 
-⚠ **This is a release candidate, 2.0.0-rc.1.** Its search speed against 1.1.0
+⚠ **This is a release candidate, 2.0.0-rc.2.** Its search speed against 1.1.0
 was measured on 200 000 rows, where the bar names 1 000 000, and it has not
 yet been compared with Arthor; 2.0.0 follows both.
 [Known limitations](#known-limitations) says what else is unmeasured.
@@ -938,8 +938,10 @@ all", not only "what are the top hits".
 That pass scores the fingerprint folded to the index's width (`--bits`), and
 folding lets unrelated features share a bit — enough, for a query of a few atoms,
 to rank first a molecule that shares nothing with it. So the first 1 000 rows
-of each database's ranking are scored again from their unfolded features and
-ordered by that score: what you read at the top is exact. Past row 1 000 the
+of the ranking are scored again from their unfolded features and ordered by
+that score: what you read at the top is exact. A search over several databases
+(`/dt/db1,db2/search`) is one ranking over all of them, with one such head —
+the answer one database holding them all would give. Past row 1 000 the
 order and the scores are the folded ones, on their own scale, and a page that
 reaches there says so in `warning`. The histogram and the count are the folded
 pass's. `Manhattan` is normalised by the width and stays folded throughout.
