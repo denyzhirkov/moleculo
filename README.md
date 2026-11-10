@@ -47,8 +47,8 @@ heading that says so. What 2.0 changed against 1.x is listed there too, under
 *Upgrading from 1.x to 2.0*.
 
 ⚠ **This is a release candidate, 2.0.0-rc.4.** Its search speed against 1.1.0
-was measured on 200 000 rows, where the bar names 1 000 000, and it has not
-yet been compared with Arthor; 2.0.0 follows both.
+is measured on the 1 000 000 rows the bar names, and both bars are met; it has
+not yet been compared with Arthor, and 2.0.0 follows that.
 [Known limitations](#known-limitations) says what else is unmeasured.
 
 ---
@@ -929,6 +929,8 @@ and is being fixed; until then, write `POST` exactly as `GET`.
 
 Several databases at once: `/dt/db1,db2/search`. Counts sum, every hit carries
 the database it came from, and `partStats` breaks the total down per database.
+The list is a set: a database named twice is searched once, in the place it was
+first named, so `/dt/db1,db1/search` answers exactly what `/dt/db1/search` does.
 
 ### Query limits
 
@@ -2061,23 +2063,24 @@ Everything else on the list does something this does not.
 
 ## Known limitations
 
-- **This is a release candidate, and four things are not yet measured at the
+- **This is a release candidate, and three things are not yet measured at the
   scale or against the reference they need.**
   - **Format 4's build time** has not been measured at scale — not at 124 M,
     let alone at a billion.
   - **Format 4's size** has been measured only on 1 000 000-row samples.
-  - **The search speed 2.0 claims against 1.1.0** — 2.12× summed over the 56
-    corpus queries, at least 10.83× on each of the ring queries `[R2]`, `[r5]`
-    and `[r6]`, one thread — was measured on the first 200 000 rows of
-    PubChem, on 2026-10-31, on the development tree of that day; the scan path
-    has changed since. The bar names the first 1 000 000 rows, and that run
-    is owed, on the release binary. Until then the figures are an indication.
   - **Arthor has not been compared with 2.0**, on time to the first page or
     on exhaustive throughput: the table under [Arthor](#arthor--the-wire-compatibility-target-and-the-speed-yardstick)
     is 1.x on format 3, and the public instance did not answer when last
     tried, on 2026-11-09.
 
-  2.0.0 follows the 1 000 000-row run and the Arthor comparison.
+  2.0.0 follows the Arthor comparison. ⚠ **The search speed 2.0 claims
+  against 1.1.0 is no longer on this list**: measured on 2026-11-10 on the
+  first 1 000 000 rows of PubChem, one thread, six alternating rounds against
+  1.1.0's scan — **2.09× summed over the 56 corpus queries, and 11.09×, 10.84×
+  and 11.75× on `[R2]`, `[r5]` and `[r6]`**, each side's own spread 1.4–3.2%,
+  both bars met. Equal work was checked first: 999 972 rows on each side, every
+  one verified, the same hits on 55 of 56 queries, `[R2]` moved by its
+  deliberate 2.0 change. The code measured is rc.4's search path.
 - **Below row 1 000 of a similarity ranking, the order and the scores are the
   folded fingerprint's**, and they can read higher than the exact scores above
   them: folding lets unrelated features share a bit, and mostly inflates a
