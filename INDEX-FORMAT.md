@@ -161,7 +161,7 @@ honour:
 | `fingerprint_bits` | `u32` | fingerprint width in bits; a multiple of 64. `0` means the shard has no fingerprints |
 | `fingerprint_codec` | `"none"` \| `"zstd"` | codec of `fp.col`. Absent means `"none"` |
 | `fingerprint_block_molecules` | `u32` | rows per block of `fp.col`, and of the blocks `fp.sum` and `popcount.sum` checksum. 1 024 by default. **Absent or `0` means "use `block_molecules`"** |
-| `builder` | string | what wrote the shard, e.g. `moleculo-index 2.0.0-rc.3`. **Informational**: it is the crate's version, which a release moves, and a reader must not check it against the format version or refuse a value it has not seen |
+| `builder` | string | what wrote the shard, e.g. `moleculo-index 2.0.0-rc.4`. **Informational**: it is the crate's version, which a release moves, and a reader must not check it against the format version or refuse a value it has not seen |
 | `features` | array of string | additive flags; see below |
 
 **The three block sizes are separate numbers**, because the three stores are

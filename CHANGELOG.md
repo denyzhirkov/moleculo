@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.0.0-rc.4 — 2026-11-10
+
+**The fourth release candidate for 2.0: one change to the search page.** It
+reads every index an earlier 2.0 candidate built, unchanged — format 4, no
+rebuild and no migration. What 2.0.0 still waits for is as rc.1 said: the
+1 000 000-row speed run on the release binary and the comparison with Arthor.
+
+### Changed
+
+**The structure view shows the whole SMILES.** Under a zoomed structure the
+SMILES was held to two lines beside the copy button and scrolled inside them,
+so a long record — a glycoside, inositol hexanicotinate at 126 characters —
+could not be read at a glance. It now has a row of its own and wraps to its
+full length; only a string of thousands of characters is still capped, at
+40% of the window's height, so the view never runs off the screen.
+
 ## 2.0.0-rc.3 — 2026-11-10
 
 **The third release candidate for 2.0: one fix to the search page.** It reads
