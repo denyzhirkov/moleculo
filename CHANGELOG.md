@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.0.0-rc.3 — 2026-11-10
+
+**The third release candidate for 2.0: one fix to the search page.** It reads
+every index 2.0.0-rc.1 and rc.2 built, unchanged — format 4, no rebuild and no
+migration. What 2.0.0 still waits for is as rc.1 said: the 1 000 000-row speed
+run on the release binary and the comparison with Arthor.
+
+### Fixed
+
+**A new search on the search page could leave its results as grey placeholder
+rows.** The count above them was right; the rows never came. It happened when
+the new answer's first page held the same rows as the one already shown — the
+same query run again, or a collection added after the first search (SMARTS
+`COC` over mcule, then over mcule, real-space and world-drugs, whose first 250
+rows are mcule's either way). The page skipped redrawing a table it had
+already cleared. It now always draws the answer to a new search. Nothing
+changed in what the server answers.
+
 ## 2.0.0-rc.2 — 2026-11-09
 
 **The second release candidate for 2.0: one fix to similarity over several

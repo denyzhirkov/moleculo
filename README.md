@@ -44,7 +44,7 @@ configuration, index format 4 and the metric names are stable. An answer
 moves only in a minor release, and only under a heading that says so. What
 2.0 changed against 1.x is listed there too, under *Upgrading from 1.x to 2.0*.
 
-⚠ **This is a release candidate, 2.0.0-rc.2.** Its search speed against 1.1.0
+⚠ **This is a release candidate, 2.0.0-rc.3.** Its search speed against 1.1.0
 was measured on 200 000 rows, where the bar names 1 000 000, and it has not
 yet been compared with Arthor; 2.0.0 follows both.
 [Known limitations](#known-limitations) says what else is unmeasured.
