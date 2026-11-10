@@ -32,17 +32,19 @@ structures never leave the process.
 - [Security](#security)
 
 The index format is specified separately, in
-[`INDEX-FORMAT.md`](INDEX-FORMAT.md): enough to write a program that lists what
-a database holds — row ids, original records, which rows are live, the stored
-molecules — and checks every checksum, without this software. It describes
-format version 4, which 2.0 writes; version 3, the frozen format of 1.x that
-`index migrate` reads, is summarised at its end.
+[`INDEX-FORMAT.md`](https://github.com/denyzhirkov/moleculo/blob/main/INDEX-FORMAT.md):
+enough to write a program that lists what a database holds — row ids, original
+records, which rows are live, the stored molecules — and checks every checksum,
+without this software. It describes format version 4, which 2.0 writes;
+version 3, the frozen format of 1.x that `index migrate` reads, is summarised
+at its end.
 
 What 2.x promises, and what it deliberately does not, is
-[`COMPATIBILITY.md`](COMPATIBILITY.md): the wire, the command line, the
-configuration, index format 4 and the metric names are stable. An answer
-moves only in a minor release, and only under a heading that says so. What
-2.0 changed against 1.x is listed there too, under *Upgrading from 1.x to 2.0*.
+[`COMPATIBILITY.md`](https://github.com/denyzhirkov/moleculo/blob/main/COMPATIBILITY.md):
+the wire, the command line, the configuration, index format 4 and the metric
+names are stable. An answer moves only in a minor release, and only under a
+heading that says so. What 2.0 changed against 1.x is listed there too, under
+*Upgrading from 1.x to 2.0*.
 
 ⚠ **This is a release candidate, 2.0.0-rc.4.** Its search speed against 1.1.0
 was measured on 200 000 rows, where the bar names 1 000 000, and it has not
@@ -53,16 +55,60 @@ yet been compared with Arthor; 2.0.0 follows both.
 
 ## Install
 
-Download the archive for your platform from
-[Releases](https://github.com/denyzhirkov/moleculo/releases), verify it, unpack
-it, and put the binary on your `PATH`.
+**This README describes 2.0.0-rc.4, a pre-release.** Download it from
+[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.0.0-rc.4):
+the archive for your platform and `SHA256SUMS`, into one folder.
+
+⚠ **GitHub's *Latest* badge points at 1.1.0, not at this.** A release
+candidate is published as a pre-release, and GitHub never marks a pre-release
+*Latest*, so the badge on the *Releases* page and every `releases/latest` link
+hand you 1.1.0. That
+build reads index format 3 and has no `index migrate`, so an index this one
+wrote is not served by it. `moleculo index inspect` from 1.1.0 on an index from
+this build:
+
+```
+REFUSED        format version 4 is not readable by this build, which writes 3
+```
+
+and its `serve` skips every such database, then exits with
+`moleculo: no shards found` if nothing else is left.
+
+1.1.0's own README is the one in
+[its release](https://github.com/denyzhirkov/moleculo/releases/tag/v1.1.0) and
+[its tag](https://github.com/denyzhirkov/moleculo/blob/v1.1.0/README.md).
+
+Verify the archive **before** unpacking it, in the folder you downloaded into.
+`SHA256SUMS` lists every platform's archive, so tell the checker to skip the
+ones you did not download:
 
 ```sh
-tar xzf moleculo-<version>-<platform>.tar.gz
-cd moleculo-<version>-<platform>
-shasum -a 256 -c ../SHA256SUMS      # optional, SHA256SUMS is in the same release
-./moleculo --help
+shasum -a 256 -c SHA256SUMS --ignore-missing        # macOS
+sha256sum -c --ignore-missing SHA256SUMS            # Linux, GNU coreutils
 ```
+
+```
+./moleculo-2.0.0-rc.4-aarch64-apple-darwin.tar.gz: OK
+```
+
+⚠ Without `--ignore-missing`, each archive you did not download is reported
+`FAILED open or read` and the command exits 1, though yours is fine. BusyBox's
+`sha256sum`, which is Alpine's, has no `--ignore-missing`; pick your line out
+instead:
+
+```sh
+grep aarch64-unknown-linux-musl SHA256SUMS | sha256sum -c
+```
+
+Then unpack it and put the binary on your `PATH`:
+
+```sh
+tar xzf moleculo-2.0.0-rc.4-<platform>.tar.gz
+cd moleculo-2.0.0-rc.4-<platform>
+./moleculo --version
+```
+
+The archive holds the binary, this README and `THIRD-PARTY-LICENSES`.
 
 | platform | archive |
 |---|---|
@@ -402,12 +448,17 @@ dies leaves nothing behind but the staging directory.
 ### Upgrading a 1.x index to 2.0
 
 2.0 reads index format 4. An index built by any 1.x release is format 3, and 2.0
-**will not serve it until it is converted**. The server says so at startup and
-names the command:
+**will not serve it until it is converted**. The server says so at startup,
+names the command, and skips that database. ⚠ **If it was the only one, the
+server exits** (status 1), with the usage text after the last line here:
 
 ```
-3 of the 3 shards of ./indexes/mydb are the 1.x index format; convert them with `moleculo index migrate`
+WARN moleculo_engine::catalog: skipping a database that will not open database=mydb error=3 of the 3 shards of ./indexes/mydb are the 1.x index format; convert them with `moleculo index migrate`
+moleculo: no shards found under ./indexes
 ```
+
+With other databases beside it, the rest are served and only that one is
+missing from `/dt/data`.
 
 Convert it in place:
 
@@ -433,7 +484,7 @@ write, byte for byte, with three things kept from the old one:
 
 ⚠ **A 2.0 database can answer a query differently from its 1.x self.** The
 conversion re-reads the chemistry with 2.0's rules, so where 2.0 changed an
-answer (see the changelog's *Answers moved*), the converted database gives the
+answer (see [the changelog](https://github.com/denyzhirkov/moleculo/blob/main/CHANGELOG.md)'s *Answers moved*), the converted database gives the
 new answer. That is the point of converting rather than copying.
 
 ⚠ **A molecule 2.0 cannot store is deleted, not dropped.** Dropping it would
@@ -578,8 +629,8 @@ on only where you would also be comfortable with an open port.
 
 ⚠ **`--bind` defaults to `127.0.0.1`, deliberately.** The port is the only
 boundary this product has, so loopback is the default everywhere except where
-something opts in — which the container image does, because inside a container
-loopback reaches nobody.
+something opts in — which [the Dockerfile](#in-a-container) does, because inside
+a container loopback reaches nobody.
 
 ### Before you start: what will it cost?
 
@@ -612,14 +663,17 @@ The disk blocks allocated to it, read with plain `du`, peaked at 84 800 KiB
 against the finished shard's 84 812. ⚠ `--replace` keeps the old shard until the new one is swapped in,
 so a replacement needs room for both.
 
-⚠ **Size reads high, and the one measurement of it says why.** The example
-above is that 1 000 000-row input, which built to **81.0 MB** — 84 902 882
-bytes by `index inspect`, in the estimate's unit of 1 024² bytes, the same
-shard as the 82 916 KiB above — so the estimate is **+16%**. Most of the gap is the
-manifest's feature vocabulary, which is close to a fixed cost per shard rather
-than a cost per molecule: 19.6 bytes a molecule in the 50 000-row sample
-against 3.2 in the built shard, and scaling the sample multiplies it. Provision
-from the estimate and you will have room.
+⚠ **Size has been checked against one build on this index format, and the tool
+itself says how far it reads off has not been measured** — one comparison is
+not a direction of error. That one: the example above is the 1 000 000-row
+input, which built to **81.0 MB** — 84 902 882 bytes by `index inspect`, in the
+estimate's unit of 1 024² bytes, the same shard as the 82 916 KiB above — so
+there the estimate read **+16%**. Most of that gap is the manifest's feature
+vocabulary, which is close to a fixed cost per shard rather than a cost per
+molecule: 19.6 bytes a molecule in the 50 000-row sample against 3.2 in the
+built shard, and scaling the sample multiplies it. That mechanism points high,
+but it is a reading of one input, not a guarantee for yours: allow margin both
+ways, as the estimate's own output says.
 
 ⚠ **Time has not been checked against a build on this index format.** One
 estimate and one build, on a machine somebody was using, is no comparison. On
@@ -642,18 +696,24 @@ what people do. So it now says where it is — and since 0.10.0 killing it costs
 only the shard in flight, because `--resume` continues the rest:
 
 ```
-INFO starting          pass="screening vocabulary" molecules=9999789
-INFO working           pass="screening vocabulary" done=3973120 total=9999789
-                       percent=40 per_second=66193 pass_seconds_left=91
-INFO pass complete     pass="screening vocabulary" molecules=9999789
-                       seconds=150 per_second=66588
+INFO moleculo_index::progress: starting pass="ingest" unit="bytes" total=106583500
+INFO moleculo_index::progress: working pass="ingest" unit="bytes" done=73187495 total=106583500 percent=69.0 per_second=2439583.0 pass_seconds_left=14.0
+INFO moleculo_index::progress: pass complete pass="ingest" unit="bytes" done=106583500 seconds=43 per_second=2433968.0
+INFO moleculo_index::progress: starting pass="screening vocabulary" unit="molecules" total=1502000
+INFO moleculo_index::progress: working pass="screening vocabulary" unit="molecules" done=950272 total=1502000 percent=63.0 per_second=31297.0 pass_seconds_left=18.0
 ```
+
+That is 2.0.0-rc.4 building 1 502 000 molecules (a 3 004-molecule collection
+repeated 500 times) on a laptop somebody was using, timestamps trimmed, stopped
+80 seconds in; the rates are that machine's that afternoon, not a figure to plan
+by.
 
 **One line every thirty seconds**, per pass, on stderr — `RUST_LOG=info`, which
 is the default. A pass adds two more lines of its own, one when it starts and
-one when it finishes, so a build costs roughly `duration / 30s` lines per pass
-plus eight. A 7 420-molecule build costs **9 lines** and finishes inside one
-interval; a build that runs for an hour costs a few hundred.
+one when it finishes, and the build ends with one `built` line, so a build costs
+roughly one line per thirty seconds plus seven. A 3 004-molecule build costs
+**7 lines** and finishes inside one interval; a build that runs for an hour
+costs a few hundred.
 
 ⚠ **That is a rule rather than a number on purpose.** This section used to quote
 "24 lines for a 10 M build", which was true of one machine at one thread count
@@ -712,19 +772,71 @@ runs beside the index — 6.3 GB beside a 10.7 GB index at 124 M molecules.
 
 ### In a container
 
-The image carries **the binary from the release**, unpacked — it does not
-compile its own. What runs in your cluster is byte-identical to what you would
-download, including the leak checking that keeps a builder's home directory out
-of it.
+**No image is published, and the Dockerfile below is the whole of one.** It
+downloads the release archive from GitHub, refuses it unless its SHA-256 is the
+one pinned here — copied from the release's `SHA256SUMS` — and installs the
+binary. Nothing is compiled, so what runs in your cluster is byte-identical to
+what you would download.
+
+```dockerfile
+# The published release binary, checked against the checksums pinned below.
+FROM alpine:3.20 AS fetch
+ARG VERSION=2.0.0-rc.4
+ARG SHA256_AMD64=00a932393d44fa92d7427f892aca32b57ef3deaab4992dd6936e0aca766f2eb5
+ARG SHA256_ARM64=8226ca540ab3b8b5d6544374fa4a367285e5caa260144d0845516d3582d7100b
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
+      amd64) TARGET=x86_64-unknown-linux-musl  SUM=$SHA256_AMD64 ;; \
+      arm64) TARGET=aarch64-unknown-linux-musl SUM=$SHA256_ARM64 ;; \
+      *) echo "no moleculo build for $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+ && ARCHIVE=moleculo-${VERSION}-${TARGET}.tar.gz \
+ && wget -q "https://github.com/denyzhirkov/moleculo/releases/download/v${VERSION}/${ARCHIVE}" \
+ && echo "${SUM}  ${ARCHIVE}" | sha256sum -c \
+ && tar xzf "${ARCHIVE}" \
+ && install -m 0755 "moleculo-${VERSION}-${TARGET}/moleculo" /usr/local/bin/moleculo
+
+FROM alpine:3.20
+RUN adduser -D -H -u 10001 moleculo
+COPY --from=fetch /usr/local/bin/moleculo /usr/local/bin/moleculo
+VOLUME ["/databases"]
+ENV MOLECULO_DATABASES=/databases \
+    MOLECULO_PORT=8080 \
+    MOLECULO_BIND=0.0.0.0
+EXPOSE 8080
+USER 10001
+HEALTHCHECK --interval=15s --timeout=3s --start-period=60s --retries=3 \
+  CMD wget -q -O /dev/null "http://127.0.0.1:${MOLECULO_PORT}/readyz" || exit 1
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/usr/local/bin/moleculo"]
+CMD ["serve"]
+```
+
+Save it as `Dockerfile` in an otherwise empty directory and build there.
+BuildKit, Docker's default builder, is required: it supplies `TARGETARCH`, and
+the legacy builder leaves it empty, so the build stops at `no moleculo build
+for` without saying why.
 
 ```sh
-docker build --build-arg VERSION=<version> \
-             --build-arg TARGET=x86_64-unknown-linux-musl -t moleculo:<version> .
-
-docker run --rm -p 8080:8080 \
+docker build -t moleculo:2.0.0-rc.4 .
+docker run --rm -p 127.0.0.1:8080:8080 \
   -v /srv/indexes:/databases:ro \
-  moleculo:<version>
+  moleculo:2.0.0-rc.4
 ```
+
+It builds for the machine you build on; `--platform linux/amd64` or
+`linux/arm64` picks the other, and BuildKit hands that to `TARGETARCH`. For
+another version, change `VERSION` and both sums together, from that release's
+`SHA256SUMS`: a sum left behind fails the build at `sha256sum -c`, which is the
+point of pinning it.
+
+Run as written, on an arm64 Mac with Docker Desktop: the build printed
+`moleculo-2.0.0-rc.4-aarch64-unknown-linux-musl.tar.gz: OK`, and the
+`linux/amd64` build the same for the x86-64 archive; with one sum replaced by
+zeros the build stopped at `FAILED`. The arm64 image, a 3 004-molecule index
+mounted and `--network none`, read *healthy* within 22 seconds, answered
+`/readyz` with `{"databases":1,"degraded":[],"status":"ready"}` and a benzene
+search with its hits, and `docker stop -t 40` drained it in 1 ms.
 
 - **Databases are mounted, never baked in.** A molecule collection is your
   confidential property and has no business inside an image that gets copied
@@ -732,8 +844,14 @@ docker run --rm -p 8080:8080 \
 - **The process runs unprivileged** as uid 10001. It reads mounted indexes and
   writes nothing outside a build directory, so root buys nothing and costs you
   an argument with your security team.
-- ⚠ **Nothing is fetched at build time or at run time.** Verified by running the
-  image with `--network none` and searching inside it.
+- ⚠ **The build fetches one file from GitHub; the running image fetches
+  nothing.** Verified by running the image with `--network none` and searching
+  inside it. On a network with no route out, download and verify the archive
+  elsewhere, put it beside the Dockerfile, and `COPY` it into the first stage
+  in place of the `wget`.
+- ⚠ **The health check reads the port from `MOLECULO_PORT`.** Change the port
+  with `-e MOLECULO_PORT=9000`, not by overriding the command with
+  `serve --port 9000`, or the check asks the wrong one.
 
 Every subdirectory of every root that holds a valid index is served as a
 database, named after its directory. Several roots can be listed; two roots
@@ -748,7 +866,7 @@ the others serving, with every affected search saying so — see
 
 The server listens on **loopback by default** and there is no authentication of
 any kind. ⚠ `--bind` (or `MOLECULO_BIND`) will put it on another address, which
-the container image does because inside a container loopback reaches nobody —
+the Dockerfile above does because inside a container loopback reaches nobody —
 **that is the one place the port stops being the boundary**, so read
 [Security](#security) before setting it anywhere else.
 
@@ -782,7 +900,10 @@ collection size and the histogram would become a sample of whichever molecules
 happened to be scored first. If a similarity search does not fit in the limit,
 the response is a `503` saying so — raise `--max-seconds` or search a smaller
 database. Similarity searches that arrive together share one scan; each still
-answers by its own limit, with its result or the `503`.
+answers by its own limit, with its result or the `503`. ⚠ That is the time
+limit. A shard that is missing is another matter, and on one machine a
+similarity over the shards left is answered rather than refused — see
+[when a shard is missing](#when-a-shard-is-missing).
 
 ---
 
@@ -797,8 +918,14 @@ GET|POST /dt/{database}/search
 | `type` | `Substructure`, `SMARTS`, `Similarity` or `Formula` |
 | `query` | the structure or formula |
 | `qopts` | per-type options, below |
-| `start`, `length` | paging |
+| `start`, `length` | paging: the first row, from `0`, and how many rows. ⚠ `length` is **10** when absent |
 | `fmt` | `json` (default), `tsv`, `csv` |
+
+⚠ **Parameters go in the query string, for `GET` and `POST` alike. A body is
+not read today.** A `POST` whose parameters are only in its body — a form or
+JSON — is a `400` in plain text, ``Failed to deserialize query string: missing
+field `query` ``, and a body sent beside a query string is ignored. That is known
+and is being fixed; until then, write `POST` exactly as `GET`.
 
 Several databases at once: `/dt/db1,db2/search`. Counts sum, every hit carries
 the database it came from, and `partStats` breaks the total down per database.
@@ -833,18 +960,33 @@ GET|POST /dt/{database}/identity?query={smiles}
 
 ⚠ **The one endpoint here that is ours rather than Arthor's.** It returns the
 rows holding the *same compound* as your query — the free acid, its sodium salt,
-its lysine salt — and each says **how** it merged and what it set aside.
+its lysine salt — and each says **how** it merged and what it set aside. As for
+search, `query` goes in the query string for `GET` and `POST` alike.
+
+Asked of a four-row database built with `--shards 2` — aspirin, caffeine and
+ibuprofen in shard 0, aspirin's lysine salt alone in shard 1:
 
 ```json
-{ "key": "43c6119de2e0654c…", "parent": "CC(=O)Oc(c1)c(ccc1)C(=O)O",
-  "matches": [
-    { "id": 12, "record": "CC(=O)Oc1ccccc1C(=O)O\tCHEMBL25",
-      "mergedBy": "whole-molecule", "setAside": [] },
-    { "id": 4471, "record": "CC(=O)Oc1ccccc1C(=O)O.NCCCC[C@H](N)C(=O)O\tCHEMBL22",
-      "mergedBy": "largest-fragment", "setAside": ["NCCCC[C@H](N)C(=O)O"] }
-  ],
-  "complete": true, "examined": 5, "skipped": 442, "time": 7620 }
+{"complete":true,"examined":2,"key":"43c6119de2e0654c50662b66a25cefce",
+ "matches":[
+  {"database":"salts","id":0,"mergedBy":"whole-molecule",
+   "record":"CC(=O)Oc1ccccc1C(=O)O\taspirin","setAside":[]},
+  {"database":"salts","id":0,"mergedBy":"largest-fragment",
+   "record":"CC(=O)Oc1ccccc1C(=O)O.NCCCC[C@H](N)C(=O)O\taspirin-lysine",
+   "setAside":["NCCCC[C@H](N)C(=O)O"]}],
+ "parent":"CC(=O)Oc(c1)c(ccc1)C(=O)O","query":"CC(=O)Oc1ccccc1C(=O)O",
+ "skipped":0,"time":1}
 ```
+
+⚠ **A match's `id` is the row's position inside its shard, not the row id a
+search returns.** Above, both matches read `id: 0`; a search of the same
+database gives them row ids `0` and `4294967296` — `(shard << 32) | local`,
+under [Getting results out](#a-search-may-take-more-than-one-request). On a
+database of one shard the two are the same number. On a sharded one they
+differ, and two matches from different shards can carry the same `id`, so
+`database` plus `id` does not name a row there. `index append` and
+`--shards` both make a database sharded. Use `record`'s identifier to find the
+row. That is known and is being fixed.
 
 `complete: false` means `matches` is a **floor**, for one of two reasons. The
 wall clock ran out, or a canonical search reached its work budget, either on
@@ -928,7 +1070,16 @@ that is not fluorine.
 
 The query is SMILES; `qopts` names the measure instead of locks: `Tanimoto`
 (default), `Dice`, `Dissimilarity`, `Manhattan`, or `Tversky(α,β)` with your own
-parameters.
+parameters, such as `Tversky(0.70,0.30)`.
+
+⚠ **A measure's name is case-sensitive, and a name this build does not know is
+Tanimoto, silently** — no error, no warning. Asked for analogues of
+`CC(=O)Nc1ccc(O)cc1C` on a 3 004-molecule collection, the top hit scores
+`0.523` under `qopts=Dice` and `0.354` under `qopts=dice`, `DICE`, a bare
+`Tversky` or a misspelling, which is its Tanimoto score. That is deliberate:
+Arthor answers an unknown measure the same way, recorded against its demo
+instance, and a client written against it gets the same answer here. Check the
+spelling, because nothing in the response will.
 
 Every molecule in the database is scored — the response's `recordsFiltered` is
 the collection size — and the response carries a 256-bucket histogram of the
@@ -956,7 +1107,7 @@ Exact molecular formula, hydrogens included, order-independent: `C9H8O4` and
 
 New in 0.6.0, and as far as we can tell nobody else does it: a structural search
 that finds **nothing** comes back with an `explain` object instead of a bare
-zero.
+zero. A substructure search for `[Pu]` on a 3 004-molecule collection:
 
 ```json
 "explain": {
@@ -964,7 +1115,7 @@ zero.
   "absentFeatures": ["Pu"],
   "activeLocks": [],
   "decisive": true,
-  "tautomerForms": 2,
+  "tautomerForms": 1,
   "tautomerFormsComplete": true
 }
 ```
@@ -1042,7 +1193,8 @@ measured on its own `REAL-Database-22Q1`, where index 3 appears twice in a
 single answer. Our page keys a marked molecule by that column, and while it
 repeated, marking a row could silently unmark a different molecule.
 
-A complete client is a dozen lines:
+A complete client is twenty lines. It asks the same page until it has
+converged, then moves `start` on by what it has read, until it holds every hit:
 
 ```python
 import json, time, urllib.parse, urllib.request
@@ -1051,12 +1203,18 @@ def search(base, database, query, kind="Substructure", qopts=None, length=1000):
     params = {"type": kind, "query": query, "length": length, "draw": 1}
     if qopts:
         params["qopts"] = qopts
-    url = f"{base}/dt/{database}/search?" + urllib.parse.urlencode(params)
+    rows = []
     while True:
+        params["start"] = len(rows)
+        url = f"{base}/dt/{database}/search?" + urllib.parse.urlencode(params)
         body = json.loads(urllib.request.urlopen(url, timeout=300).read())
-        if not body.get("hasMore"):
+        if body.get("hasMore"):           # not converged yet: ask again
+            time.sleep(0.5)
+            continue
+        rows += body["data"]              # converged: keep the page, ask the next
+        if not body["data"] or len(rows) >= body["recordsFiltered"]:
+            body["data"] = rows
             return body
-        time.sleep(0.5)
 
 hits = search("http://localhost:8080", "mydb", "c1ccccc1")
 print(hits["recordsFiltered"], "of", hits["recordsTotal"])
@@ -1064,10 +1222,20 @@ for _rank, _row, smiles, identifier, *_ in hits["data"]:
     print(identifier, smiles)
 ```
 
+⚠ **One request returns one page**, `length` rows from `start`, and `length`
+is **10** if you leave it out. A client that polls until `hasMore` is false
+and stops there has the count but only the first page: on a 3 004-molecule
+collection, benzene reads `1973 of 3004` either way, and this client prints
+1 973 rows where one request with `length=1000` returns 1 000. ⚠ A similarity
+search matches every row, so paging one to the end reads the whole collection.
+
 ### Into a spreadsheet
 
 Add `fmt=tsv` (or `csv`) and the response is a table of SMILES and identifiers
-that opens directly in Excel or pandas.
+that opens directly in Excel or pandas. ⚠ It is one page like any other: name
+`length`, or you get ten rows and a header. On a 3 004-molecule collection,
+`[*]` as SMARTS with `fmt=tsv` returns 11 lines; with `length=100000` it
+returns 3 005.
 
 ### Into chemistry software
 
@@ -1296,6 +1464,18 @@ thing that tells you the collection searched is not the collection you asked
 about. A database whose every shard is gone is refused outright rather than
 served as an empty one.
 
+⚠ **On a database served from one machine, a similarity search and a negated
+search (`qopts=N`) over the shards that are left both answer `200`**, with the
+same warning, where [across parts](#a-database-on-more-than-one-machine) the
+same two are refused. On a two-shard database of 3 004 rows with shard 1
+missing, a similarity search answered `200` and ranked the 1 587 rows that
+remain, `recordsFiltered` and the histogram summing to 1 587; a negated
+benzene search answered `200` with 278 rows. That is inconsistent with the
+rule for parts, which refuses both, and with the reason
+[a similarity is not truncated](#search-limits): a ranking over some of a
+collection is not a ranking of it. It is known and is being fixed. Until then,
+**treat that warning on a similarity or a negated search as a refusal.**
+
 **A shard found damaged while searching is treated as a missing one.** An
 index opens without reading its stores end to end, so a damaged block in the
 middle of `fp.col` or `mol.pack` is found by the first search that walks over
@@ -1325,7 +1505,7 @@ each, checked when the index opens. A record's block is checked every time it
 is read — for a hit on a page, an identity lookup, or a pass over the whole
 store — so a damaged record is never rendered as a different one. A raw
 `smi.blk` from a 2.0 pre-release, built before `smi.sum`, is refused as "must
-be rebuilt". [`INDEX-FORMAT.md`](INDEX-FORMAT.md) lists every checksum.
+be rebuilt". [`INDEX-FORMAT.md`](https://github.com/denyzhirkov/moleculo/blob/main/INDEX-FORMAT.md) lists every checksum.
 
 ### A database on more than one machine
 
@@ -1377,6 +1557,12 @@ the part, `verified` says how much was covered, and the warning names it:
 Two answers cannot be partial and are refused instead: a **similarity** (a
 ranking over some of the collection is not a ranking, `503`) and a **negated
 search** (the complement of a floor holds matching rows permanently, `400`).
+Measured with one of two parts down: the similarity read `503` with
+`big: a similarity over parts needs every part, and 1 of 2 are unavailable`,
+the negation `400` with `big: a negated search needs every part, …`. ⚠ A
+database on one machine with a shard missing answers both today; see
+[when a shard is missing](#when-a-shard-is-missing).
+
 Warming, evicting, uploading and reload are done on each part, and the
 coordinator says so when asked. A request naming a database of parts beside
 another database is refused: name it alone.
@@ -1469,16 +1655,16 @@ blocking threads, the rest wait where no metric can see them, and a reload or
 an upload waits behind them. The pool is the bound, which is one more reason
 not to remove it on a server anyone else can reach.
 
-The container image has a `HEALTHCHECK` on `/readyz`. A server started with
-`--build-dir` builds any pending sources **before** it listens, which can take
-hours on a large collection, and it reads *unhealthy* until the build is done.
-In Kubernetes, cover that with a `startupProbe` rather than a longer liveness
-timeout:
+The [Dockerfile](#in-a-container) has a `HEALTHCHECK` on `/readyz`. A server
+started with `--build-dir` builds any pending sources **before** it listens,
+which can take hours on a large collection, and it reads *unhealthy* until the
+build is done. In Kubernetes, cover that with a `startupProbe` rather than a
+longer liveness timeout:
 
 ```yaml
 containers:
   - name: moleculo
-    image: moleculo:<version>
+    image: moleculo:2.0.0-rc.4         # built from the Dockerfile above, in your registry
     ports: [{ containerPort: 8080 }]
     startupProbe:
       httpGet: { path: /healthz, port: 8080 }
@@ -1606,9 +1792,15 @@ competing for.
 
 ## The search page
 
-`moleculo serve` puts a page on the port it listens to. Open it and you get the
-whole engine: a query field, the four search types, the collections you have
-mounted, the `qopts` locks, and results.
+`moleculo serve` puts a page on the port it listens to. Open it and you get a
+query field, the four search types, the collections you have mounted, and
+results. For a structure search it offers four locks — rings, chains, charge
+and isotope, which are `R`, `C`, `Q` and `I` — and for a similarity the
+measures Tanimoto, Dice, Dissimilarity and Manhattan.
+
+⚠ **The page is not the whole API.** `S`, `N` and `G`, `geometry=` and
+`Tversky(α,β)` are reached through the [API](#searching) only, as are
+`fmt=sdf` and [`identity`](#do-you-already-hold-this-compound).
 
 **Draw, or type.** The `draw` button opens a structure editor. Drawing writes
 into the query field, the field can be read back into the editor, and query
@@ -1626,8 +1818,10 @@ look at, and **settings** turns them off.
 
 **Click a structure to see it properly.** The table draws small because it has
 to fit hundreds of rows; a dialog opens the one you clicked at readable size,
-with its identifier, its notation, a copy button, and arrows — or the left and
-right keys — to walk the hits without going back to the table. Escape closes it.
+with its identifier, the collection it came from and its row id (and its score,
+for a similarity), its notation, a copy button, an *add to collection* button,
+and arrows — or the left and right keys — to walk the hits without going back to
+the table. Escape closes it.
 
 ⚠ **Stereochemistry in that drawing was wrong before 0.6.0**, and it was wrong
 in a way nothing noticed for the life of the code: the mark travels inside a
@@ -1660,9 +1854,19 @@ is labelled a floor, with the reason; and a rail shows how much of the
 collection was actually examined. A number without that state attached would be
 a lie in one of three ways, and this page is careful not to tell it.
 
-**A collection.** Star any hit and it is kept in your browser — structure and
-identifier both, so it survives an index rebuild that changes row numbers — and
-exports as TSV. It never leaves your machine; the server is not told.
+**Exporting a result.** A finished search offers *Export TSV* and *CSV*. Each
+is the same search asked again with `fmt=tsv` or `fmt=csv` and `length=20000`,
+so ⚠ **an export holds at most the first 20 000 hits**, whatever the count
+reads; past that, use the [API](#getting-results-out) and page.
+
+**A collection.** Star any hit and it is kept in your browser, with its
+structure and identifier, and exports as TSV with both. It never leaves your
+machine; the server is not told. ⚠ **A star is matched to a row by database and
+row id**, which mean something only inside one
+[index generation](#a-search-may-take-more-than-one-request). After a rebuild
+that moves rows, the exported collection still holds what you starred, but the
+star in the table can sit on a different molecule, and the molecule you starred
+can show none.
 
 **Sorting sorts what is loaded.** The page says so, in as many words. Sorting
 250 loaded rows of ten million is not sorting the result, and pretending
@@ -2212,15 +2416,16 @@ Everything else on the list does something this does not.
   bounds the server's own workload; it does not bound *who* may send work. There
   is no notion of a user, a key or an allowed address anywhere in this build.
 - ⚠ **Anyone who can reach the port can export the whole collection.** A SMARTS
-  of `[*]` with `fmt=tsv` matches every molecule and streams it. That is not a
+  of `[*]` with `fmt=tsv` matches every molecule, and a large enough `length`
+  — or paging with `start` — streams every one of them. That is not a
   defect in the search — it is what a search engine does — but it means the port
   is the security boundary, and there is nothing behind it.
 - It listens on loopback by default. **Keep it there**, or put it behind
   something that authenticates and rate limits. That is the supported way to
   expose this to more than one trusted user, and it is not optional advice.
-- ⚠ **The container image sets `MOLECULO_BIND=0.0.0.0`, and it has to.** Inside
-  a container loopback reaches nobody, so an image that kept the default would
-  publish a port that answers nothing. What that means for you is that **the
+- ⚠ **[The Dockerfile](#in-a-container) sets `MOLECULO_BIND=0.0.0.0`, and it
+  has to.** Inside a container loopback reaches nobody, so an image that kept
+  the default would publish a port that answers nothing. What that means for you is that **the
   container's boundary is the port you map and the network you attach it to**,
   not the process — `-p 127.0.0.1:8080:8080` keeps it on your host's loopback,
   and `-p 8080:8080` does not.
@@ -2229,7 +2434,9 @@ Everything else on the list does something this does not.
 
 ## Licence
 
-Proprietary — see `LICENSE`. Source code is not distributed.
+Proprietary — see
+[`LICENSE`](https://github.com/denyzhirkov/moleculo/blob/main/LICENSE). Source
+code is not distributed.
 
 Third-party open source components and their licences are listed in
-`THIRD-PARTY-LICENSES`.
+`THIRD-PARTY-LICENSES`, which is in the archive beside this file.
