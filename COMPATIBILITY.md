@@ -61,12 +61,9 @@ converted** with `moleculo index migrate`.
 - **Index format version 4**, as [`INDEX-FORMAT.md`](INDEX-FORMAT.md) specifies
   it. It is the format of 2.0, frozen from 2.0.0-rc.1 on and for all of 2.x.
   Every index that 2.0.0 or a later 2.x release builds opens in every later
-  2.x release, with no rebuild and no migration step. ⚠ **A release candidate
-  promises less, and says what**: a shard a release candidate builds is format 4 and is
-  expected to open in 2.0.0 unchanged, but should anything before 2.0.0 have to
-  change the format, that is a new format version, 5, announced in the first
-  line of its changelog entry and converted with `index migrate` — never a
-  silent change to version 4. (Before rc.1, version 4 had never shipped, and
+  2.x release, with no rebuild and no migration step. A shard a 2.0 release
+  candidate built is format 4 too, and opens in 2.0.0 unchanged: the format
+  did not move between rc.1 and 2.0.0. (Before rc.1, version 4 had never shipped, and
   its pre-release builds changed it without a new number; README § *Upgrading
   a 1.x index to 2.0* says what this build does with such a shard.)
 - ⚠ **Version 3, the format of every 1.x release, is not read.** A 2.x release

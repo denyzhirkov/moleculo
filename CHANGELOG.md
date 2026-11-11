@@ -1,5 +1,138 @@
 # Changelog
 
+## 2.0.0 — 2026-11-11
+
+⚠ **2.0 does not serve a 1.x index (format 3) until it is converted with
+`moleculo index migrate`.** 1.1.0 cannot read what 2.0 writes, so convert after
+the binary is replaced, not before. What 2.0 changed against 1.x, and what 2.x
+promises, is in [`COMPATIBILITY.md`](COMPATIBILITY.md); the release candidates
+below, rc.1 first, say what changed on the way.
+
+⚠ **The licence changes from 2.0.0: free for academic, non-profit and personal
+non-commercial use; commercial use needs a paid licence.** A company may
+evaluate moleculo free for 30 days; beyond that, commercial use — including a
+company's internal research, contract research, and research funded by a
+company that receives rights in the results — needs a commercial licence
+(denyzhirkov@gmail.com). `LICENSE` now ships inside every archive. Copies of versions up to
+and including 2.0.0-rc.4 remain under the licence they were distributed with,
+which allowed commercial use; its text is kept as `LICENSE-pre-2.0`.
+
+⚠ **2.0.0 has not been compared with Arthor**, on time to the first page or on
+exhaustive throughput. That comparison was named as owed before 2.0.0; the
+public instance has not answered since 2026-11-09, and 2.0.0 ships without it
+by the owner's decision. Every figure README sets beside Arthor's was measured
+on 1.x and index format 3. It is the first item under *Known limitations*.
+
+**The 2.0 speed claim is measured, and both bars are met.** On the first
+1 000 000 rows of PubChem, one thread, six alternating rounds against 1.1.0's
+scan: **2.09× summed over the 56 corpus queries** (bar 2×), and **11.09×,
+10.84× and 11.75× on `[R2]`, `[r5]` and `[r6]`** (bar 10× each), each side's own
+spread 1.4–3.2%. Equal work first: 999 972 rows each side, every one verified,
+the same hits on 55 of 56 queries (`[R2]` moved deliberately, 397 920 → 396 669).
+The search path measured is rc.4's, which 2.0.0 does not change.
+
+### Fixed
+
+**A database named twice in one request is searched once.** `/dt/mcule,mcule/search`
+searched mcule twice: every structural hit appeared twice, every similarity row
+sat beside its own copy, and `recordsTotal` counted the database twice. A
+repeat is now dropped and the first mention keeps its place, so the answer is
+exactly the one `/dt/mcule/search` gives — the same for `identity`. A
+database spread over parts on several machines, named twice, used to be
+refused (`… is a database of parts and answers on its own; name it alone`); it is now answered like any
+other repeat. Naming it beside a *different* database is still refused.
+
+**A sharded rebuild without `--replace` could corrupt the database it refused
+to touch.** `index build --shards N` over an existing database refuses a shard
+that is already there, correctly — but the refusal was per shard, and that let
+two different mismatches through it: asking for a *different shard count*
+built the extra shards for real, beside the refused old ones, and reported the
+result "unchanged and complete" — a database with duplicate rows, called
+complete. Asking for a *different generation* refused every old shard (their
+generation is not the one asked for) and then rewrote the database's shard
+list from what matched that new generation — nothing did, so the list became
+empty, silently. Both are pre-existing; what changed is that round 1 of review
+caught the first while fixing a merely misleading message, and the second
+while fixing the first. The whole build is now checked against what already
+exists — shard count, generation, and whether every shard that would be
+touched is actually there — **before a single shard is built**, so a mismatch
+refuses everything and touches nothing; `--replace` is still the way to
+rebuild a different layout, and still needs a higher generation. Asking for
+exactly the layout that is already there now says so and builds nothing,
+rather than a page of per-shard "FAILED" lines.
+
+`--resume` goes through that check, not around it — and the check's first
+version did not see the flag at all (review round 2): a build killed partway,
+the case the flag exists for, was refused as a mismatch with no reason given;
+a lost shard directory could not be rebuilt; and a resume over a complete
+database exited 1 where it had exited 0 saying everything was already built,
+which turns a retry-until-success script into a loop. All three are restored:
+the sealed shards are kept, the missing ones built and `database.json`
+rewritten from the disk — which is also the repair the 0.10.0 notes promise
+for an emptied manifest — and a complete database is a success that builds
+nothing. A refusal that gave no reason now names the shards that are not built
+and the flag. What the flag does not do is skip the check: a shard sealed at
+another generation, something that is not a shard, a shard sealed outside the
+asked range — read off the disk, not only `database.json`, since a killed
+build has no manifest yet — and a shard built from a different division of the
+input (a different `--shards`, wider or narrower) still refuse the whole build
+before anything is touched. Continuing any of those would have built shards
+from one division of the input beside shards from another: the duplicate-row
+defect above, reached through the flag. A different division is seen two ways,
+and either refuses. A sealed shard holding more molecules than its asked range
+has lines cannot have been built from it; alone, rejected rows hid that — a
+shard counts only the rows it kept — so 1 700 lines with one in twelve
+unparseable, built as 16 shards and resumed as 17, exited 0 with 91 duplicate
+rows from a database that had never been killed (review round 3). So the
+shard's first and last stored record are also compared with the first and last
+line the builder would store from its range, by the builder's own rule for
+which lines become rows; alone, an input of identical lines hid *that* — 40
+copies of one line, built as 2 shards and resumed as 4, exited 0 with 59 rows
+(review round 4) — which the count sees. ⚠ What neither sees: an input whose
+bytes changed since the shards were built, which remains the flag's contract,
+and a shard whose boundary lines read the same as its new range's while it
+holds no more molecules than the range has lines — repeated lines over a finer
+earlier division. Without `--resume`, a database already complete at the asked
+layout still exits 1, as a single-shard build refusing an occupied destination
+does.
+
+**`moleculo --help` caught up with the CLI.** It was missing `--bind`,
+`--enable-upload`, `--enable-index-control`, `--no-tautomer-report` and
+`--max-upload-bytes`, broke one sentence mid-word, still said the server
+"listens on loopback only" after `--bind` shipped, and named no environment
+variable though `serve`'s settings table existed for exactly that; `index
+append`'s line was missing `--notify`, and the build-only flags it silently
+accepted and ignored (`--shard`, `--generation`, `--replace`, `--resume`) are
+now refused by name instead.
+
+**`POST /dt/{db}/search` and `/identity` read a form body.** The body was never
+read: `POST` took its parameters from the query string alone, so
+`curl -X POST --data-urlencode query=…` was a plain-text `400`, ``Failed to
+deserialize query string: missing field `query` `` — on the route that exists
+for a query too long for a URL. An `application/x-www-form-urlencoded` body is
+now read together with the query string; a parameter given in both with
+different values is a `400` naming it. Any other non-empty body, JSON included,
+is ignored as before when the query string carries `query`, and is a `415` when
+it does not, since it was evidently meant to carry it. A body is held to 1 MiB,
+a `413` past it, and a request to 256 parameters, query string and body
+together, a `400` past them. A parameter that cannot be read — `query` missing,
+`start=abc` — is now a `400 Invalid Query` in Arthor's error shape on `GET` as
+well, where it was axum's plain text. A coordinator forwards the merged
+parameters to its parts in the URL up to 8 000 bytes and as a form body past
+that; a part that refuses the body is asked once more in the URL. ⚠ **Upgrade
+the parts before the coordinator**: a part on rc.4 or earlier reads only the
+query string, and the retry puts a query longer than about 8 KB back in a URL,
+which a proxy between the two may refuse.
+
+**`identity` answers a match's row id, not its position in its shard.** A
+match's `id` was the row's position inside its shard, so on a sharded database
+two matches from different shards could carry the same `id`, and none joined
+with a search's results, whose second column is the row id
+`(shard << 32) | local`. On a `--shards 2` database aspirin and its lysine salt
+both read `id: 0`; they now read `0` and `4294967296`, the numbers a search
+gives them. On a database of one shard nothing changes. `index append` makes
+any database sharded.
+
 ## 2.0.0-rc.4 — 2026-11-10
 
 **The fourth release candidate for 2.0: one change to the search page.** It

@@ -5,15 +5,69 @@ Copyright (c) 2026 Denis Zhirkov. All rights reserved.
 This software is licensed, not sold. By downloading, installing or using it you
 accept the terms below. If you do not accept them, do not use the software.
 
-1. GRANT
+In short: moleculo is free for academic, non-profit and personal non-commercial
+use. A company may evaluate it free for 30 days; any other commercial use needs
+a paid commercial licence. The definitions below decide which case applies.
 
-   You are granted a non-exclusive, non-transferable, revocable licence to
-   install and run unmodified copies of the software, for any purpose including
-   commercial use, on any number of machines you own or control.
+1. DEFINITIONS
 
-2. RESTRICTIONS
+   "Academic Use" means use by a student, teacher or researcher of an
+   accredited university, college or other degree-granting educational
+   institution, for teaching, study or research whose results the institution
+   is free to publish without delay or restriction.
 
-   You may not:
+   "Non-Profit Use" means use by a registered charity or other
+   non-governmental non-profit organisation for its own non-commercial
+   research or educational purposes.
+
+   "Personal Use" means use by an individual for their own purposes, outside
+   any paid work and not on behalf of any organisation.
+
+   "Commercial Use" means any use that is not Academic, Non-Profit or Personal
+   Use. Any use described in (a) to (d) below is Commercial Use even where it
+   would otherwise meet one of those definitions. It includes, without
+   limitation:
+   a. any use by or on behalf of a for-profit company, including its internal
+      research and development;
+   b. research carried out under contract for, or funded by, a for-profit
+      company where that company receives the results or rights in them
+      ahead of publication, or exclusively;
+   c. providing services to others for a fee — such as contract research,
+      screening, or library and compound searching — using the software;
+   d. using the software in or alongside a product or service that is sold.
+
+   "Evaluation" means Commercial Use solely to assess whether to obtain a
+   commercial licence, on non-production systems, without using the results
+   in any commercial decision or deliverable.
+
+2. FREE LICENCE
+
+   For Academic Use, Non-Profit Use and Personal Use, you are granted a
+   non-exclusive, non-transferable, revocable, royalty-free licence to install
+   and run unmodified copies of the software on any number of machines you own
+   or control.
+
+3. EVALUATION
+
+   An organisation, or an individual acting in the course of business, may use
+   the software for Evaluation, free of charge, for 30 days from its first
+   installation by that organisation or individual. Evaluation is granted once
+   per organisation or individual. Continuing Commercial Use after the
+   evaluation period requires a commercial licence under section 4.
+
+4. COMMERCIAL LICENCE
+
+   Any Commercial Use other than Evaluation requires a separate written
+   commercial licence from the copyright holder, on terms and for a fee agreed
+   with them. Nothing in this agreement grants a right of Commercial Use beyond
+   Evaluation. To obtain a commercial licence, write to denyzhirkov@gmail.com.
+
+   If you are unsure whether your use is Commercial Use, ask before relying on
+   the free licence; until you receive an answer, treat the use as commercial.
+
+5. RESTRICTIONS
+
+   Under any licence granted here you may not:
 
    a. reverse engineer, decompile or disassemble the software, or otherwise
       attempt to derive its source code, except to the extent that this
@@ -25,23 +79,24 @@ accept the terms below. If you do not accept them, do not use the software.
    d. remove or alter any copyright, trademark or other proprietary notice.
 
    Redistributing the software unmodified and in full, at no charge and with
-   this licence intact, is permitted.
+   this licence intact, is permitted. Each recipient is bound by this licence,
+   including sections 3 and 4.
 
-3. YOUR DATA
+6. YOUR DATA
 
    The software processes data you supply. No rights in that data are claimed.
    The software performs no network communication other than serving the HTTP
    interface you start, on the address and port you choose. It sends no
    telemetry and reports nothing to the copyright holder.
 
-4. THIRD-PARTY COMPONENTS
+7. THIRD-PARTY COMPONENTS
 
    The software includes third-party open source components, each under its own
    licence. Those licences are reproduced in the accompanying
    THIRD-PARTY-LICENSES file and govern those components. Nothing in this
    agreement limits any right you have under them.
 
-5. NO WARRANTY
+8. NO WARRANTY
 
    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -51,23 +106,31 @@ accept the terms below. If you do not accept them, do not use the software.
    substitute for expert judgement and must not be relied upon as the sole basis
    for any safety-critical, regulatory, clinical or purchasing decision.
 
-6. LIMITATION OF LIABILITY
+9. LIMITATION OF LIABILITY
 
    IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR
    OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
 
-7. TERMINATION
+10. TERMINATION
 
-   This licence terminates automatically if you breach it. On termination you
-   must stop using the software and destroy all copies. Sections 5 and 6 survive
-   termination.
+   This licence terminates automatically if you breach it, including by
+   Commercial Use beyond Evaluation without a commercial licence. On
+   termination you must stop using the software and destroy all copies.
+   Sections 8 and 9 survive termination.
 
-8. GOVERNING LAW
+11. EARLIER VERSIONS
+
+   This agreement applies to every version of moleculo distributed with it, and
+   to 2.0.0 and every later version. A copy of an earlier version — up to and
+   including 2.0.0-rc.4 — remains under the licence it was distributed with,
+   whose text is kept as LICENSE-pre-2.0 in the public repository.
+
+12. GOVERNING LAW
 
    Any dispute arising under this licence shall be governed by the laws of the
    jurisdiction in which the copyright holder resides, without regard to its
    conflict of law provisions.
 
-Enquiries about licences not granted above — redistribution, hosting as a
-service, or source access — should be directed to the copyright holder.
+Enquiries about licences not granted above — commercial use, redistribution,
+hosting as a service, or source access — should be directed to denyzhirkov@gmail.com.

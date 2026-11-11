@@ -1,0 +1,73 @@
+moleculo — End User Licence Agreement
+
+Copyright (c) 2026 Denis Zhirkov. All rights reserved.
+
+This software is licensed, not sold. By downloading, installing or using it you
+accept the terms below. If you do not accept them, do not use the software.
+
+1. GRANT
+
+   You are granted a non-exclusive, non-transferable, revocable licence to
+   install and run unmodified copies of the software, for any purpose including
+   commercial use, on any number of machines you own or control.
+
+2. RESTRICTIONS
+
+   You may not:
+
+   a. reverse engineer, decompile or disassemble the software, or otherwise
+      attempt to derive its source code, except to the extent that this
+      restriction is expressly prohibited by applicable law;
+   b. modify the software or create derivative works of it;
+   c. sell, rent, lease, sublicense or distribute the software, or make it
+      available to third parties as part of a hosted or managed service, without
+      prior written permission from the copyright holder;
+   d. remove or alter any copyright, trademark or other proprietary notice.
+
+   Redistributing the software unmodified and in full, at no charge and with
+   this licence intact, is permitted.
+
+3. YOUR DATA
+
+   The software processes data you supply. No rights in that data are claimed.
+   The software performs no network communication other than serving the HTTP
+   interface you start, on the address and port you choose. It sends no
+   telemetry and reports nothing to the copyright holder.
+
+4. THIRD-PARTY COMPONENTS
+
+   The software includes third-party open source components, each under its own
+   licence. Those licences are reproduced in the accompanying
+   THIRD-PARTY-LICENSES file and govern those components. Nothing in this
+   agreement limits any right you have under them.
+
+5. NO WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+   The software is a chemical structure search engine. Its results are not a
+   substitute for expert judgement and must not be relied upon as the sole basis
+   for any safety-critical, regulatory, clinical or purchasing decision.
+
+6. LIMITATION OF LIABILITY
+
+   IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR
+   OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+7. TERMINATION
+
+   This licence terminates automatically if you breach it. On termination you
+   must stop using the software and destroy all copies. Sections 5 and 6 survive
+   termination.
+
+8. GOVERNING LAW
+
+   Any dispute arising under this licence shall be governed by the laws of the
+   jurisdiction in which the copyright holder resides, without regard to its
+   conflict of law provisions.
+
+Enquiries about licences not granted above — redistribution, hosting as a
+service, or source access — should be directed to the copyright holder.

@@ -46,26 +46,27 @@ names are stable. An answer moves only in a minor release, and only under a
 heading that says so. What 2.0 changed against 1.x is listed there too, under
 *Upgrading from 1.x to 2.0*.
 
-⚠ **This is a release candidate, 2.0.0-rc.4.** Its search speed against 1.1.0
-is measured on the 1 000 000 rows the bar names, and both bars are met; it has
-not yet been compared with Arthor, and 2.0.0 follows that.
+**Licence:** free for academic, non-profit and personal non-commercial use;
+commercial use needs a paid licence after a 30-day evaluation — see
+[Licence](#licence).
+
+⚠ **2.0.0 has not been compared with Arthor.** Its search speed against 1.1.0
+is measured on the 1 000 000 rows the bar names, and both bars are met; the
+comparison with Arthor was owed before 2.0.0, the public instance has not
+answered since 2026-11-09, and 2.0.0 ships without it.
 [Known limitations](#known-limitations) says what else is unmeasured.
 
 ---
 
 ## Install
 
-**This README describes 2.0.0-rc.4, a pre-release.** Download it from
-[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.0.0-rc.4):
+**This README describes 2.0.0.** Download it from
+[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.0.0):
 the archive for your platform and `SHA256SUMS`, into one folder.
 
-⚠ **GitHub's *Latest* badge points at 1.1.0, not at this.** A release
-candidate is published as a pre-release, and GitHub never marks a pre-release
-*Latest*, so the badge on the *Releases* page and every `releases/latest` link
-hand you 1.1.0. That
-build reads index format 3 and has no `index migrate`, so an index this one
-wrote is not served by it. `moleculo index inspect` from 1.1.0 on an index from
-this build:
+⚠ **Keep 1.1.0 away from a 2.0 index.** 1.1.0 reads index format 3 and has no
+`index migrate`, so an index 2.0 wrote — or migrated — is not served by it.
+`moleculo index inspect` from 1.1.0 on an index from this build:
 
 ```
 REFUSED        format version 4 is not readable by this build, which writes 3
@@ -88,7 +89,7 @@ sha256sum -c --ignore-missing SHA256SUMS            # Linux, GNU coreutils
 ```
 
 ```
-./moleculo-2.0.0-rc.4-aarch64-apple-darwin.tar.gz: OK
+./moleculo-2.0.0-aarch64-apple-darwin.tar.gz: OK
 ```
 
 ⚠ Without `--ignore-missing`, each archive you did not download is reported
@@ -103,12 +104,12 @@ grep aarch64-unknown-linux-musl SHA256SUMS | sha256sum -c
 Then unpack it and put the binary on your `PATH`:
 
 ```sh
-tar xzf moleculo-2.0.0-rc.4-<platform>.tar.gz
-cd moleculo-2.0.0-rc.4-<platform>
+tar xzf moleculo-2.0.0-<platform>.tar.gz
+cd moleculo-2.0.0-<platform>
 ./moleculo --version
 ```
 
-The archive holds the binary, this README and `THIRD-PARTY-LICENSES`.
+The archive holds the binary, `LICENSE`, this README and `THIRD-PARTY-LICENSES`.
 
 | platform | archive |
 |---|---|
@@ -270,13 +271,44 @@ count](#choosing-the-shard-count-and-why-eight-is-not-always-the-answer).
 | `--codec none\|zstd` | compress the record store, which holds your input lines. Default `zstd`. The molecule store is always LZ4: index format 4 fixes it. |
 | `--fp-codec` | the same, for the fingerprint column. ⚠ `--fp-codec none` is **6.6x the similarity throughput for about 26% more index** — measured, see below. |
 | `--replace` | swap out a shard that is already there. Requires a higher `--generation`. |
-| `--resume` | continue an interrupted sharded build: a shard already sealed is skipped rather than refused. ⚠ Only correct if the input file has not changed — a shard records how many molecules it holds, not which bytes it came from |
+| `--resume` | continue an interrupted sharded build: a shard already sealed at the asked generation is kept, the missing ones are built, and `database.json` is rewritten from what is sealed; a database already complete is a success that builds nothing. It does not bypass the rerun check below. ⚠ Only correct if the input file has not changed — a shard records how many molecules it holds, not which bytes it came from |
 | `--generation N` | index generation. Row identifiers are stable within one generation and only within one. |
 | `--shard N` | the id of the shard this build writes, the high half of every row id in it. Default 0. Refused beside `--shards` of more than 1, which assigns the ids itself, and refused at 2³¹ or more. |
 | `--notify URL` | call a running server's reload endpoint once the shard is published. |
 | `--threads N` | workers for the pass that counts the screening vocabulary. Default: the machine's parallelism. Does not change the shard; does raise memory. |
 | `--shards N` | split the input into N shards. **Size the shard, not the machine** — see below. |
 | `--build-workers N` | how many shard builds run concurrently. Default: the machine's parallelism. ⚠ **Lower this on slow or networked storage**; it is a bound on concurrent I/O as much as on memory. |
+
+⚠ **Re-running a sharded build over the same destination without `--replace`
+is checked against the whole existing database before anything is touched**,
+not shard by shard: a different `--shards` count or a different `--generation`
+refuses the entire build, names what is actually there, and builds nothing —
+rather than refusing the old shards while building new ones in beside them (and
+reporting the mix as "unchanged"), or rewriting the manifest from a generation
+the old shards do not match. Asking for exactly the layout that is already
+there says so and builds nothing either. `--replace` is the way out of either
+mismatch, and it still needs a higher `--generation`.
+
+A build that did not finish — killed partway, or a shard directory lost — is
+refused the same way without `--resume`, naming the shards that are not built
+and the flag; with `--resume` the sealed shards are kept and the rest built.
+`--resume` goes *through* that check, not around it: a shard sealed at another
+generation, a directory that is not a shard, a shard sealed outside the asked
+range (on disk or in `database.json`), or a shard that was built from a
+different division of the input — a different `--shards`, wider or narrower —
+still refuses the whole build, because continuing any of those would build
+shards from one division of the input beside shards from another. A different
+division is seen two ways, and either refuses: a sealed shard's first or last
+stored record is not the first or last line the builder would store from its
+asked range (both sides decided by the builder's own rule for which lines
+become rows, so rejected rows do not hide it; an empty shard matches a range
+with no storable line and nothing else), or the shard holds more molecules than
+its asked range has lines, which no shard built from that range can. ⚠ **What
+neither sees:** an input whose bytes have changed since the shards were built —
+that remains the flag's contract — and a shard whose boundary lines happen to
+read the same as its new range's *and* that holds no more molecules than the
+range has lines, which an input of repeated lines can produce for a finer
+earlier division. Pass `--resume` only to the command that was interrupted.
 
 **Plan for the time.** Building is CPU-bound and it is hours rather than minutes
 at scale.
@@ -781,9 +813,9 @@ what you would download.
 ```dockerfile
 # The published release binary, checked against the checksums pinned below.
 FROM alpine:3.20 AS fetch
-ARG VERSION=2.0.0-rc.4
-ARG SHA256_AMD64=00a932393d44fa92d7427f892aca32b57ef3deaab4992dd6936e0aca766f2eb5
-ARG SHA256_ARM64=8226ca540ab3b8b5d6544374fa4a367285e5caa260144d0845516d3582d7100b
+ARG VERSION=2.0.0
+ARG SHA256_AMD64=218fcbe1c8287ac0f1ae67964baceea3d8571439ae4b2a2ff5955d7cca101755
+ARG SHA256_ARM64=737774a10e0000a3d3d390bb22ab58357d30313b0a1ca036d370c04171ed50b2
 ARG TARGETARCH
 RUN case "$TARGETARCH" in \
       amd64) TARGET=x86_64-unknown-linux-musl  SUM=$SHA256_AMD64 ;; \
@@ -818,10 +850,10 @@ the legacy builder leaves it empty, so the build stops at `no moleculo build
 for` without saying why.
 
 ```sh
-docker build -t moleculo:2.0.0-rc.4 .
+docker build -t moleculo:2.0.0 .
 docker run --rm -p 127.0.0.1:8080:8080 \
   -v /srv/indexes:/databases:ro \
-  moleculo:2.0.0-rc.4
+  moleculo:2.0.0
 ```
 
 It builds for the machine you build on; `--platform linux/amd64` or
@@ -831,7 +863,7 @@ another version, change `VERSION` and both sums together, from that release's
 point of pinning it.
 
 Run as written, on an arm64 Mac with Docker Desktop: the build printed
-`moleculo-2.0.0-rc.4-aarch64-unknown-linux-musl.tar.gz: OK`, and the
+`moleculo-2.0.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
 `linux/amd64` build the same for the x86-64 archive; with one sum replaced by
 zeros the build stopped at `FAILED`. The arm64 image, a 3 004-molecule index
 mounted and `--network none`, read *healthy* within 22 seconds, answered
@@ -921,11 +953,36 @@ GET|POST /dt/{database}/search
 | `start`, `length` | paging: the first row, from `0`, and how many rows. ⚠ `length` is **10** when absent |
 | `fmt` | `json` (default), `tsv`, `csv` |
 
-⚠ **Parameters go in the query string, for `GET` and `POST` alike. A body is
-not read today.** A `POST` whose parameters are only in its body — a form or
-JSON — is a `400` in plain text, ``Failed to deserialize query string: missing
-field `query` ``, and a body sent beside a query string is ignored. That is known
-and is being fixed; until then, write `POST` exactly as `GET`.
+**`POST` takes its parameters as a form body, for a query too long for a URL.**
+The body is `application/x-www-form-urlencoded` — what `curl --data-urlencode`
+sends — and is read together with the query string, so a parameter may go in
+either:
+
+```sh
+curl -X POST 'http://localhost:8080/dt/mydb/search' \
+  --data-urlencode 'type=Formula' --data-urlencode 'query=C9H8O4'
+```
+
+- ⚠ **A parameter given in both with different values is a `400` naming it**
+  (`` `query` is given twice with different values ``); the same value in both
+  is the same request.
+- ⚠ **Any other body is read only for whether it was meant to carry the
+  query.** Beside a query string that holds `query`, a body that is not a form
+  is ignored, as it always was — a client that puts everything in the URL may
+  still send `{}` as JSON. With no `query` in the URL it is a `415 Unsupported
+  Media Type`, because that body was evidently meant to carry it. An empty
+  body is no body, whatever its `Content-Type`.
+- A body is held to **1 MiB**, a `413` past it, and a request to **256
+  parameters**, query string and body together, a `400` past them. A query is
+  held to 4 096 atoms ([Query limits](#query-limits)), so nothing that can
+  parse comes near either.
+- A parameter that cannot be read — `query` missing, `start=abc` — is a `400
+  Invalid Query` in the error shape every other error has, for `GET` and
+  `POST` alike.
+
+Arthor's own documentation lists `POST`'s parameters as query-string ones and
+its instance could not be asked, so a client written against Arthor and
+sending everything in the URL is answered exactly as before.
 
 Several databases at once: `/dt/db1,db2/search`. Counts sum, every hit carries
 the database it came from, and `partStats` breaks the total down per database.
@@ -963,7 +1020,12 @@ GET|POST /dt/{database}/identity?query={smiles}
 ⚠ **The one endpoint here that is ours rather than Arthor's.** It returns the
 rows holding the *same compound* as your query — the free acid, its sodium salt,
 its lysine salt — and each says **how** it merged and what it set aside. As for
-search, `query` goes in the query string for `GET` and `POST` alike.
+search, `query` goes in the query string, or in a form body on `POST`:
+
+```sh
+curl -X POST 'http://localhost:8080/dt/salts/identity' \
+  --data-urlencode 'query=CC(=O)Oc1ccccc1C(=O)O'
+```
 
 Asked of a four-row database built with `--shards 2` — aspirin, caffeine and
 ibuprofen in shard 0, aspirin's lysine salt alone in shard 1:
@@ -973,22 +1035,19 @@ ibuprofen in shard 0, aspirin's lysine salt alone in shard 1:
  "matches":[
   {"database":"salts","id":0,"mergedBy":"whole-molecule",
    "record":"CC(=O)Oc1ccccc1C(=O)O\taspirin","setAside":[]},
-  {"database":"salts","id":0,"mergedBy":"largest-fragment",
+  {"database":"salts","id":4294967296,"mergedBy":"largest-fragment",
    "record":"CC(=O)Oc1ccccc1C(=O)O.NCCCC[C@H](N)C(=O)O\taspirin-lysine",
    "setAside":["NCCCC[C@H](N)C(=O)O"]}],
  "parent":"CC(=O)Oc(c1)c(ccc1)C(=O)O","query":"CC(=O)Oc1ccccc1C(=O)O",
  "skipped":0,"time":1}
 ```
 
-⚠ **A match's `id` is the row's position inside its shard, not the row id a
-search returns.** Above, both matches read `id: 0`; a search of the same
-database gives them row ids `0` and `4294967296` — `(shard << 32) | local`,
-under [Getting results out](#a-search-may-take-more-than-one-request). On a
-database of one shard the two are the same number. On a sharded one they
-differ, and two matches from different shards can carry the same `id`, so
-`database` plus `id` does not name a row there. `index append` and
-`--shards` both make a database sharded. Use `record`'s identifier to find the
-row. That is known and is being fixed.
+A match's `id` is the row id, the number a search returns in its second
+column: `(shard << 32) | local`, under
+[Getting results out](#a-search-may-take-more-than-one-request). A search of
+the same database gives aspirin `0` and the lysine salt `4294967296`, as above,
+so `database` plus `id` names one row and joins with a search's results. On a
+database of one shard it is the row's position, as it always was.
 
 `complete: false` means `matches` is a **floor**, for one of two reasons. The
 wall clock ran out, or a canonical search reached its work budget, either on
@@ -1594,6 +1653,15 @@ and the one that bites is silent. A 0.23.0 part ignores `geometry=1` entirely
 and returns the unlocked answer, which is 207 rows where this build returns 101.
 A part older than 0.24.0 stamps nothing at all, and the coordinator names it for
 that too.
+
+⚠ **Upgrade the parts before the coordinator.** A coordinator forwards a
+request's parameters in the URL up to 8 000 bytes and as a form body past that.
+A part on 2.0.0-rc.4 or earlier reads the query string alone, so it refuses the
+body, and the coordinator asks it once more in the URL — which is the length
+the client sent by body to avoid, and a proxy or load balancer between the two
+may refuse it. Queries that short are every query a drawn structure produces;
+the order matters only for those longer than about 8 KB.
+
 ### Stopping it
 
 `SIGTERM` or `SIGINT` (Ctrl-C) **drains** the server rather than killing it:
@@ -1666,7 +1734,7 @@ longer liveness timeout:
 ```yaml
 containers:
   - name: moleculo
-    image: moleculo:2.0.0-rc.4         # built from the Dockerfile above, in your registry
+    image: moleculo:2.0.0         # built from the Dockerfile above, in your registry
     ports: [{ containerPort: 8080 }]
     startupProbe:
       httpGet: { path: /healthz, port: 8080 }
@@ -2063,24 +2131,26 @@ Everything else on the list does something this does not.
 
 ## Known limitations
 
-- **This is a release candidate, and three things are not yet measured at the
-  scale or against the reference they need.**
+- **Three things are not yet measured at the scale or against the reference
+  they need.**
+  - **Arthor has not been compared with 2.0**, on time to the first page or
+    on exhaustive throughput: the table under [Arthor](#arthor--the-wire-compatibility-target-and-the-speed-yardstick)
+    is 1.x on format 3. The comparison was owed before 2.0.0; the public
+    instance has not answered since 2026-11-09, and 2.0.0 shipped without it
+    by the owner's decision rather than wait on a server nobody here runs.
   - **Format 4's build time** has not been measured at scale — not at 124 M,
     let alone at a billion.
   - **Format 4's size** has been measured only on 1 000 000-row samples.
-  - **Arthor has not been compared with 2.0**, on time to the first page or
-    on exhaustive throughput: the table under [Arthor](#arthor--the-wire-compatibility-target-and-the-speed-yardstick)
-    is 1.x on format 3, and the public instance did not answer when last
-    tried, on 2026-11-09.
 
-  2.0.0 follows the Arthor comparison. ⚠ **The search speed 2.0 claims
+  ⚠ **The search speed 2.0 claims
   against 1.1.0 is no longer on this list**: measured on 2026-11-10 on the
   first 1 000 000 rows of PubChem, one thread, six alternating rounds against
   1.1.0's scan — **2.09× summed over the 56 corpus queries, and 11.09×, 10.84×
   and 11.75× on `[R2]`, `[r5]` and `[r6]`**, each side's own spread 1.4–3.2%,
   both bars met. Equal work was checked first: 999 972 rows on each side, every
   one verified, the same hits on 55 of 56 queries, `[R2]` moved by its
-  deliberate 2.0 change. The code measured is rc.4's search path.
+  deliberate 2.0 change. The code measured is rc.4's search path, which 2.0.0
+  does not change.
 - **Below row 1 000 of a similarity ranking, the order and the scores are the
   folded fingerprint's**, and they can read higher than the exact scores above
   them: folding lets unrelated features share a bit, and mostly inflates a
@@ -2437,9 +2507,18 @@ Everything else on the list does something this does not.
 
 ## Licence
 
-Proprietary — see
-[`LICENSE`](https://github.com/denyzhirkov/moleculo/blob/main/LICENSE). Source
-code is not distributed.
+Proprietary, from 2.0.0: **free for academic, non-profit and personal
+non-commercial use; commercial use needs a paid licence**, after a free
+30-day evaluation per organisation. The full terms are in `LICENSE`, which
+ships in every archive beside this file (and on
+[GitHub](https://github.com/denyzhirkov/moleculo/blob/main/LICENSE)); its
+definitions decide which case applies — work for or funded by a company with
+rights in the results is commercial. For a commercial licence, write to
+denyzhirkov@gmail.com. Source code is not distributed.
+
+Versions up to and including 2.0.0-rc.4 remain under the licence they were
+distributed with, kept as
+[`LICENSE-pre-2.0`](https://github.com/denyzhirkov/moleculo/blob/main/LICENSE-pre-2.0).
 
 Third-party open source components and their licences are listed in
 `THIRD-PARTY-LICENSES`, which is in the archive beside this file.
