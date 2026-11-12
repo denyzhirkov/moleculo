@@ -1,5 +1,57 @@
 # Changelog
 
+## 2.1.0 — 2026-11-12
+
+Two things in the search page's drawing panel, and nothing in the engine: no
+answer moved, the index format is 4 as before, and an index 2.0.0 built is
+served unchanged. The wire is the same; one setting is new.
+
+### Added
+
+- **A structure editor of our own, marked `beta`.** The switch under the
+  drawing panel reads `JSME | moleculo`. The second is ours: a drawing surface
+  whose chemistry — the hydrogens on a label, the SMILES it writes — is this
+  engine's own parser, perception and writer compiled to WebAssembly, so a
+  drawing is read by the code that searches it. It wears the page's colours,
+  it is inside the binary (117 KB) and it needs no flag. ⚠ **It is new and
+  narrower than JSME**: it writes SMILES only — no stereochemistry, no
+  isotopes, no query features — and holds a drawing to 80 atoms. A structure
+  read into it that carries something it cannot draw is drawn without it; the
+  note under the editor says what was left out, and the query field is left
+  as typed until you draw. JSME is still what opens first.
+- **Ketcher as a further editor, if you bring it**: `--ketcher-dir <directory>`
+  (`MOLECULO_KETCHER_DIR`) pointing at an unpacked
+  [Ketcher](https://github.com/epam/ketcher) standalone release adds `Ketcher`
+  to the switch. It is Apache-2.0 and **not shipped with moleculo** — 35 MB
+  zipped, six times this binary — so the server only reads the directory, and
+  refuses to start if it holds no `index.html`. Tried with
+  `ketcher-standalone-3.18.0.zip`. With Ketcher the field receives SMILES, or
+  SMARTS when the search type is SMARTS. ⚠ The directory is served with the
+  page's origin: put there only what you would run. Without the flag the page
+  asks nothing new of anyone.
+
+### Changed
+
+- The binary is larger by the editor: 5.6 MB → 5.8 MB on macOS arm64.
+- `THIRD-PARTY-LICENSES` lists eight more packages — what the editor's
+  WebAssembly links, all MIT or Apache-2.0.
+
+### Known limitations
+
+- ⚠ **Reading a query has no time bound of its own**, and this release does not
+  fix it. Ring and aromaticity perception run before a search's deadline is
+  consulted, and some heavily fused ring systems inside the query limits take
+  seconds to tens of seconds of one core — on a search, on `/identity`, and on
+  the tautomer report. It was found on 2026-11-12 while the editor was being
+  reviewed, it is in every release so far, and nothing among 2.9 M ChEMBL
+  molecules comes near it. A fix is in review for a patch release.
+- The editor was checked in Chrome with a mouse. Touch, and other browsers,
+  were not.
+- Ketcher was tried in one version, 3.18.0, in Chrome.
+- **Arthor has still not been compared with 2.x**, and its option letters were
+  not asked for this release either: the public instance has not answered
+  since 2026-11-09.
+
 ## 2.0.0 — 2026-11-11
 
 ⚠ **2.0 does not serve a 1.x index (format 3) until it is converted with

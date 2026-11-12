@@ -50,18 +50,18 @@ heading that says so. What 2.0 changed against 1.x is listed there too, under
 commercial use needs a paid licence after a 30-day evaluation — see
 [Licence](#licence).
 
-⚠ **2.0.0 has not been compared with Arthor.** Its search speed against 1.1.0
+⚠ **2.x has not been compared with Arthor.** Its search speed against 1.1.0
 is measured on the 1 000 000 rows the bar names, and both bars are met; the
 comparison with Arthor was owed before 2.0.0, the public instance has not
-answered since 2026-11-09, and 2.0.0 ships without it.
+answered since 2026-11-09, and 2.0.0 and 2.1.0 shipped without it.
 [Known limitations](#known-limitations) says what else is unmeasured.
 
 ---
 
 ## Install
 
-**This README describes 2.0.0.** Download it from
-[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.0.0):
+**This README describes 2.1.0.** Download it from
+[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.1.0):
 the archive for your platform and `SHA256SUMS`, into one folder.
 
 ⚠ **Keep 1.1.0 away from a 2.0 index.** 1.1.0 reads index format 3 and has no
@@ -89,7 +89,7 @@ sha256sum -c --ignore-missing SHA256SUMS            # Linux, GNU coreutils
 ```
 
 ```
-./moleculo-2.0.0-aarch64-apple-darwin.tar.gz: OK
+./moleculo-2.1.0-aarch64-apple-darwin.tar.gz: OK
 ```
 
 ⚠ Without `--ignore-missing`, each archive you did not download is reported
@@ -104,8 +104,8 @@ grep aarch64-unknown-linux-musl SHA256SUMS | sha256sum -c
 Then unpack it and put the binary on your `PATH`:
 
 ```sh
-tar xzf moleculo-2.0.0-<platform>.tar.gz
-cd moleculo-2.0.0-<platform>
+tar xzf moleculo-2.1.0-<platform>.tar.gz
+cd moleculo-2.1.0-<platform>
 ./moleculo --version
 ```
 
@@ -611,6 +611,7 @@ other way round.
 | `--bind` | `MOLECULO_BIND` |
 | `--port` | `MOLECULO_PORT` |
 | `--build-dir` | `MOLECULO_BUILD_DIR` |
+| `--ketcher-dir` | `MOLECULO_KETCHER_DIR` |
 | `--max-seconds` | `MOLECULO_MAX_SECONDS` |
 | `--max-candidates` | `MOLECULO_MAX_CANDIDATES` |
 | `--max-concurrent-searches` | `MOLECULO_MAX_CONCURRENT_SEARCHES` |
@@ -813,9 +814,9 @@ what you would download.
 ```dockerfile
 # The published release binary, checked against the checksums pinned below.
 FROM alpine:3.20 AS fetch
-ARG VERSION=2.0.0
-ARG SHA256_AMD64=218fcbe1c8287ac0f1ae67964baceea3d8571439ae4b2a2ff5955d7cca101755
-ARG SHA256_ARM64=737774a10e0000a3d3d390bb22ab58357d30313b0a1ca036d370c04171ed50b2
+ARG VERSION=2.1.0
+ARG SHA256_AMD64=e9deac3377db35e244223f8f0e29a19334840a329992eea3c9cf1faffd64e397
+ARG SHA256_ARM64=afdf265c19db2dfda26f41e672528a660f605950a28cb10eaf52a1f0f5bf96a6
 ARG TARGETARCH
 RUN case "$TARGETARCH" in \
       amd64) TARGET=x86_64-unknown-linux-musl  SUM=$SHA256_AMD64 ;; \
@@ -850,10 +851,10 @@ the legacy builder leaves it empty, so the build stops at `no moleculo build
 for` without saying why.
 
 ```sh
-docker build -t moleculo:2.0.0 .
+docker build -t moleculo:2.1.0 .
 docker run --rm -p 127.0.0.1:8080:8080 \
   -v /srv/indexes:/databases:ro \
-  moleculo:2.0.0
+  moleculo:2.1.0
 ```
 
 It builds for the machine you build on; `--platform linux/amd64` or
@@ -862,13 +863,15 @@ another version, change `VERSION` and both sums together, from that release's
 `SHA256SUMS`: a sum left behind fails the build at `sha256sum -c`, which is the
 point of pinning it.
 
-Run as written, on an arm64 Mac with Docker Desktop: the build printed
-`moleculo-2.0.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
-`linux/amd64` build the same for the x86-64 archive; with one sum replaced by
-zeros the build stopped at `FAILED`. The arm64 image, a 3 004-molecule index
-mounted and `--network none`, read *healthy* within 22 seconds, answered
-`/readyz` with `{"databases":1,"degraded":[],"status":"ready"}` and a benzene
-search with its hits, and `docker stop -t 40` drained it in 1 ms.
+Run as written, on an arm64 Mac with Docker Desktop, for 2.1.0: the build
+printed `moleculo-2.1.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
+`linux/amd64` build the same for the x86-64 archive. The arm64 image, a
+3 004-molecule index mounted and `--network none`, read *healthy* within
+5 seconds and `docker stop -t 40` ended it with exit code 0. Measured on
+2.0.0 with the same Dockerfile and not repeated: with one sum replaced by
+zeros the build stopped at `FAILED`; the image answered `/readyz` with
+`{"databases":1,"degraded":[],"status":"ready"}` and a benzene search with
+its hits, and the stop drained it in 1 ms.
 
 - **Databases are mounted, never baked in.** A molecule collection is your
   confidential property and has no business inside an image that gets copied
@@ -1734,7 +1737,7 @@ longer liveness timeout:
 ```yaml
 containers:
   - name: moleculo
-    image: moleculo:2.0.0         # built from the Dockerfile above, in your registry
+    image: moleculo:2.1.0         # built from the Dockerfile above, in your registry
     ports: [{ containerPort: 8080 }]
     startupProbe:
       httpGet: { path: /healthz, port: 8080 }
@@ -1877,6 +1880,31 @@ into the query field, the field can be read back into the editor, and query
 features drawn in it come out as SMARTS. The field is the source of truth, so
 pasting a SMILES and drawing one end at the same place. The editor loads the
 first time you ask for it and not before.
+
+**An editor of our own, in beta.** The switch under the drawing panel reads
+`JSME | moleculo`, and the second carries a `beta` mark because it is still
+being built. It is ours: its chemistry is the engine's own
+parser, perception and writer compiled to WebAssembly, so a drawing is read by
+the same code that searches it, and it wears the page's colours. It is inside
+the binary and needs no flag. ⚠ It is new and narrower than JSME: it writes
+SMILES only — no stereochemistry, no isotopes, no query features — and holds a
+drawing to 80 atoms. A structure read into it that carries something it cannot
+draw is drawn without it, and the note under the editor says what was left
+out. JSME is still what opens first.
+
+**A third editor, if you bring one.** Start the server with
+`--ketcher-dir <directory>` pointing at an unpacked
+[Ketcher](https://github.com/epam/ketcher) standalone release and the drawing
+switch gains `Ketcher` between the two; the choice is remembered per browser.
+Ketcher is
+Apache-2.0 and **is not shipped with moleculo** — its standalone build is 35 MB
+zipped, six times this binary — so you fetch it once and the server only reads
+the directory. It was tried with `ketcher-standalone-3.18.0.zip` from Ketcher's
+releases (SHA-256 `484e7f10a0e74808ae5f43f0e6448db6f4d884bdd2189aa271108474167a3e7e`),
+unpacked as it is. ⚠ The directory is served with this page's origin, so put
+there only what you would run. Without the flag the page is exactly as
+it was, and nothing is requested from anywhere. With Ketcher the field receives
+SMILES, or SMARTS when the search type is SMARTS.
 
 **Hits are drawn, not just spelled.** A query is usually written with aromatic
 lowercase and a catalogue often stores Kekulé uppercase, so a perfectly correct
@@ -2162,6 +2190,15 @@ Everything else on the list does something this does not.
   the limit — see [Query limits](#query-limits). The largest of 2.9 M ChEMBL
   molecules sits far below them, and they bound queries only, never a
   collection.
+- ⚠ **Those limits do not yet bound the time it takes to read every query.**
+  Reading a query — perceiving its rings and its aromaticity — happens before
+  the search's deadline is consulted, and some heavily fused ring systems
+  inside the size limits take seconds to tens of seconds of one core to read:
+  on a search, on `/identity`, and on the tautomer report an empty answer
+  brings. Found on 2026-11-12, present in every release so far, and no real
+  molecule among 2.9 M of ChEMBL comes near it. A fix is in review and will
+  ship in a patch release. Until then it is one more reason for the rule under
+  [Security](#security): the port is the only boundary this server has.
 - **`fmt=sdf` can state less stereochemistry than it could, and on a fused
   macrocycle it may state a wrong isomer.** Measured against `RDKit` over five
   populations anyone can rebuild — world-drugs, real-space, mcule, and ChEMBL
