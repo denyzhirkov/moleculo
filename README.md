@@ -53,15 +53,16 @@ commercial use needs a paid licence after a 30-day evaluation — see
 ⚠ **2.x has not been compared with Arthor.** Its search speed against 1.1.0
 is measured on the 1 000 000 rows the bar names, and both bars are met; the
 comparison with Arthor was owed before 2.0.0, the public instance has not
-answered since 2026-11-09, and 2.0.0 and 2.1.0 shipped without it.
+answered since 2026-11-09, and every 2.x release so far has shipped without
+it.
 [Known limitations](#known-limitations) says what else is unmeasured.
 
 ---
 
 ## Install
 
-**This README describes 2.1.0.** Download it from
-[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.1.0):
+**This README describes 2.1.1.** Download it from
+[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.1.1):
 the archive for your platform and `SHA256SUMS`, into one folder.
 
 ⚠ **Keep 1.1.0 away from a 2.0 index.** 1.1.0 reads index format 3 and has no
@@ -89,7 +90,7 @@ sha256sum -c --ignore-missing SHA256SUMS            # Linux, GNU coreutils
 ```
 
 ```
-./moleculo-2.1.0-aarch64-apple-darwin.tar.gz: OK
+./moleculo-2.1.1-aarch64-apple-darwin.tar.gz: OK
 ```
 
 ⚠ Without `--ignore-missing`, each archive you did not download is reported
@@ -104,8 +105,8 @@ grep aarch64-unknown-linux-musl SHA256SUMS | sha256sum -c
 Then unpack it and put the binary on your `PATH`:
 
 ```sh
-tar xzf moleculo-2.1.0-<platform>.tar.gz
-cd moleculo-2.1.0-<platform>
+tar xzf moleculo-2.1.1-<platform>.tar.gz
+cd moleculo-2.1.1-<platform>
 ./moleculo --version
 ```
 
@@ -814,9 +815,9 @@ what you would download.
 ```dockerfile
 # The published release binary, checked against the checksums pinned below.
 FROM alpine:3.20 AS fetch
-ARG VERSION=2.1.0
-ARG SHA256_AMD64=e9deac3377db35e244223f8f0e29a19334840a329992eea3c9cf1faffd64e397
-ARG SHA256_ARM64=afdf265c19db2dfda26f41e672528a660f605950a28cb10eaf52a1f0f5bf96a6
+ARG VERSION=2.1.1
+ARG SHA256_AMD64=131915aefbe8fa2b4fa6417cf949a6d33d5cc50a0ab511ea9bf2d1f393d10b0c
+ARG SHA256_ARM64=aa52f702d7d9b6391f7a25c846f8bac850b09aa81e1d50a30c7b0e037448a863
 ARG TARGETARCH
 RUN case "$TARGETARCH" in \
       amd64) TARGET=x86_64-unknown-linux-musl  SUM=$SHA256_AMD64 ;; \
@@ -851,10 +852,10 @@ the legacy builder leaves it empty, so the build stops at `no moleculo build
 for` without saying why.
 
 ```sh
-docker build -t moleculo:2.1.0 .
+docker build -t moleculo:2.1.1 .
 docker run --rm -p 127.0.0.1:8080:8080 \
   -v /srv/indexes:/databases:ro \
-  moleculo:2.1.0
+  moleculo:2.1.1
 ```
 
 It builds for the machine you build on; `--platform linux/amd64` or
@@ -863,8 +864,8 @@ another version, change `VERSION` and both sums together, from that release's
 `SHA256SUMS`: a sum left behind fails the build at `sha256sum -c`, which is the
 point of pinning it.
 
-Run as written, on an arm64 Mac with Docker Desktop, for 2.1.0: the build
-printed `moleculo-2.1.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
+Run as written, on an arm64 Mac with Docker Desktop, for 2.1.1: the build
+printed `moleculo-2.1.1-aarch64-unknown-linux-musl.tar.gz: OK`, and the
 `linux/amd64` build the same for the x86-64 archive. The arm64 image, a
 3 004-molecule index mounted and `--network none`, read *healthy* within
 5 seconds and `docker stop -t 40` ended it with exit code 0. Measured on
@@ -994,7 +995,7 @@ first named, so `/dt/db1,db1/search` answers exactly what `/dt/db1/search` does.
 
 ### Query limits
 
-A structure query is held to five limits, wherever it is read — substructure,
+A structure query is held to six limits, wherever it is read — substructure,
 SMARTS, similarity and `identity`. A query past any of them is a
 `400 Invalid Query` naming the limit, while it is read and before anything is
 searched:
@@ -1006,13 +1007,25 @@ searched:
 | **256 levels** of nesting in one SMARTS expression (`;`, `,`, `&`, `!` and juxtaposition) | SMARTS | every walk over a query recurses once per level |
 | **two levels of `$()`**: `$($(C))` is read, `$($($(C)))` is not | SMARTS | each level multiplies the work of the levels below it |
 | **128 atoms** inside all of a query's `$()` together | SMARTS | a recursive search runs on the stack of the search that asked for it |
+| **2·10⁸ units of work** to perceive its rings and aromaticity (from 2.1.1) | SMILES | the five above bound a query's size, and some heavily fused ring systems inside them still took seconds to tens of seconds to read |
 
 ⚠ **These bound the server, not your chemistry.** Past them, one query held a
 core for seconds to minutes before any time limit applied — a 4 002-atom
 aromatic ring took 57 s — or overflowed a thread's stack, which stops the whole
 server rather than failing one request. Of 2.9 M ChEMBL molecules, the largest
 holds 855 atoms and the most aromatic 400 aromatic atoms. A collection is not
-held to these limits: they apply to queries only.
+held to the first five: they apply to queries only.
+
+⚠ **The sixth is counted work, not time, and it is the one limit a collection
+is held to as well** — a row that costs more than that to read is refused at
+build, counted and named with the other refused rows, where before it was read
+slowly. The costliest of 2.9 M ChEMBL molecules, a C60 derivative, spends 1.9%
+of it. Refusing the worst query we could construct takes about 0.4 s and
+150 MB; before 2.1.1 a 23 KB query inside the other five limits took 29.5 s and
+2 GB to refuse. ⚠ The count depends on how a molecule is written — by up to
+about a third on the shapes that reach the limit — so exactly at the edge one
+spelling of a compound is read and another refused. Nothing real is near the
+edge. PubChem has not been run against it.
 
 ### Do you already hold this compound?
 
@@ -1737,7 +1750,7 @@ longer liveness timeout:
 ```yaml
 containers:
   - name: moleculo
-    image: moleculo:2.1.0         # built from the Dockerfile above, in your registry
+    image: moleculo:2.1.1         # built from the Dockerfile above, in your registry
     ports: [{ containerPort: 8080 }]
     startupProbe:
       httpGet: { path: /healthz, port: 8080 }
@@ -2188,17 +2201,16 @@ Everything else on the list does something this does not.
   the head for each of the 8 queries measured there.
 - **A query past the size and depth limits is refused**, with a `400` naming
   the limit — see [Query limits](#query-limits). The largest of 2.9 M ChEMBL
-  molecules sits far below them, and they bound queries only, never a
-  collection.
-- ⚠ **Those limits do not yet bound the time it takes to read every query.**
-  Reading a query — perceiving its rings and its aromaticity — happens before
-  the search's deadline is consulted, and some heavily fused ring systems
-  inside the size limits take seconds to tens of seconds of one core to read:
-  on a search, on `/identity`, and on the tautomer report an empty answer
-  brings. Found on 2026-11-12, present in every release so far, and no real
-  molecule among 2.9 M of ChEMBL comes near it. A fix is in review and will
-  ship in a patch release. Until then it is one more reason for the rule under
-  [Security](#security): the port is the only boundary this server has.
+  molecules sits far below them, and the size and depth limits bound queries
+  only, never a collection; the work limit, from 2.1.1, binds both.
+- **Reading a query is bounded by counted work, from 2.1.1** — see
+  [Query limits](#query-limits). 2.0.0 and 2.1.0 had no such bound: some
+  heavily fused ring systems inside the size limits took seconds to tens of
+  seconds of one core to read, on a search, on `/identity` and on the tautomer
+  report. ⚠ What is left: the bound is a count of work that depends on how a
+  molecule is written; a tautomer report or an `/identity` answer that runs out
+  says it is incomplete rather than guessing; and the limit has been run
+  against ChEMBL, not against PubChem.
 - **`fmt=sdf` can state less stereochemistry than it could, and on a fused
   macrocycle it may state a wrong isomer.** Measured against `RDKit` over five
   populations anyone can rebuild — world-drugs, real-space, mcule, and ChEMBL

@@ -1,5 +1,70 @@
 # Changelog
 
+## 2.1.1 — 2026-11-13
+
+⚠ **A fix for the limitation 2.1.0 shipped with: reading a query now has a
+bound of its own.** In 2.0.0 and 2.1.0, some heavily fused ring systems inside
+every query limit took seconds to tens of seconds of one core to read, before
+the search's deadline was consulted — on a search, on `/identity`, and on the
+tautomer report an empty answer brings. Upgrade if the port is reachable by
+anyone you would not hand a shell. No answer moved on any corpus we run, and
+an index 2.0.0 or 2.1.0 built is served unchanged.
+
+### Fixed
+
+- **Perceiving a molecule's rings and aromaticity is held to 2·10⁸ units of
+  counted work**, charged before the work is done and before its memory is
+  taken. A query past it is a `400` naming the limit. The worst query we could
+  construct is refused in about 0.4 s and 150 MB; before, a 23 KB query inside
+  every other limit took 29.5 s and 2 GB to refuse.
+- **The tautomer report and `/identity` no longer perceive the same molecule
+  over and over.** A report perceives the rings once and each state's
+  aromaticity once; an `/identity` key works within one allowance. Two
+  requests that took 21.7 s and 25.8 s take under a second. On real
+  molecules it is simply faster: the slowest tautomer report among 4 996
+  compared took 0.59 s against 22.1 s.
+- **Running out of that work is said, not guessed.** A tautomer report that
+  stops is a floor, `/identity` answers `complete: false` with the reason, and
+  a stored row too costly to read counts as undecided rather than as absent.
+- The `R` and chain locks of `qopts` no longer perceive a query's whole ring
+  set to learn which bonds are in a ring: one SMARTS under `qopts=R` took
+  3.7 s and 455 MB.
+- A non-ASCII character in a query is named as itself in the error: `é` was
+  reported as `Ã`.
+- The beta editor inherits the bound: a drawing that held the page for more
+  than two minutes is now refused with a reason.
+
+### What did not move, and how that was checked
+
+- **Hit sets**: the 168 pinned rows, the 282 PAINS rows, candidate order and
+  identity keys are unchanged.
+- **ChEMBL, 2 897 819 molecules**: read back to the same digest, with the same
+  13 refused; the costliest, a C60 derivative, spends 1.9% of the new limit.
+- **Tautomer reports**: 4 996 queries — the 884 costliest in ChEMBL, and
+  molecules with stereocentres, charges, isotopes, several fragments and
+  zwitterions — give the same 70 292 forms, string for string, with the same
+  `complete`.
+
+### Known limitations
+
+- ⚠ **The limit binds a collection too.** A row that costs more than the limit
+  to read is refused at build — counted and named with the other refused rows —
+  where 2.1.0 read it slowly. ChEMBL has none. **PubChem has not been run
+  against it**, and a fullerene much heavier than C60 could be refused, or
+  report an incomplete set of tautomers where it was complete.
+- ⚠ **The count depends on how a molecule is written**, by up to about a third
+  on the shapes that reach the limit: exactly at the edge, one spelling of a
+  compound is read and another refused. Nothing real is near the edge.
+- Synthetic molecules that were read in under a second can now be refused — a
+  2 000-atom ring carrying ten fused benzene rings, for one.
+- ⚠ **`/identity` answers "not held" for a sulfoxide the collection holds**,
+  with `complete: true`. Found on 2026-11-12, seen on a small index for
+  omeprazole, modafinil and dimethyl sulfoxide, and not fixed here. Until it
+  is, do not read an `/identity` "not held" as final for a compound with an
+  S=O group; a substructure search for it is unaffected.
+- **Arthor has still not been compared with 2.x**; the public instance has not
+  answered since 2026-11-09.
+
 ## 2.1.0 — 2026-11-12
 
 Two things in the search page's drawing panel, and nothing in the engine: no
