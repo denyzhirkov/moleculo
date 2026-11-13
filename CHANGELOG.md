@@ -1,5 +1,109 @@
 # Changelog
 
+## 2.2.0 — 2026-11-13
+
+⚠ **Answers moved in this release, and one wrong answer is fixed that every
+release since 0.9.0 gave.** `/identity` could answer "not held" for a compound
+the collection holds; hydrogen counts now include hydrogens written as atoms;
+and with stereochemistry enforced (`qopts=G`) chiral SMARTS are read as RDKit
+reads them. The index format is 4 as before and an index 2.0.0–2.1.1 built is
+served unchanged; nothing needs rebuilding.
+
+### Fixed
+
+- ⚠ **`/identity` no longer answers "not held" for a compound its collection
+  holds when standardisation rewrites that compound.** The candidate search
+  was the query's standardised parent read back as a pattern, which pinned
+  charges, hydrogen counts and bond orders — exactly what standardisation
+  changes. A row stored as drawn was never a candidate, and the answer was
+  "not held", `complete: true`, `examined: 0`, with no warning. Every
+  sulfoxide drawn `S=O` was affected (omeprazole, modafinil, dimethyl
+  sulfoxide), and so was every compound another normalisation rule rewrites —
+  charge-separated and recombined forms, amidinium and phosphonium cations —
+  and salts whose uncharged parent differs from the stored charge, such as
+  tetrazolates. On ChEMBL, 329 of the 338 rows a rule fires on did not find
+  themselves, and 11 of a random 30 000. **Every release from 0.9.0 through
+  2.1.1 has this**; a build of 0.9.0 was run and gave the same answers.
+  ⚠ **A "not held" an earlier version gave for such a compound may have been
+  wrong — ask again.** The candidate search now asks for the parent's atoms
+  and bonds as one whole piece. Identity keys are unchanged.
+- It also makes a general `/identity` query far cheaper. On a 100 000-row
+  ChEMBL sample, every answer complete: benzene 9.2 s → 0.18 s, water
+  10.1 s → 0.06 s, ethanol 5.1 s → 0.13 s; a drug-sized query stays near
+  0.08 s. Earlier advice to keep benzene away from `/identity` is
+  withdrawn. (Wall clock on a loaded laptop, not a benchmark; the whole of
+  ChEMBL was not re-run.)
+
+### Answers moved
+
+- **Hydrogen counts include hydrogens written as atoms.** A hydrogen written
+  as an atom — `[2H]`, `[3H]`, `[1H]`, a kept `[H]` — stays an atom in the
+  molecule, and the SMARTS primitive `H<n>`, with bracket forms such as
+  `[CH]`, did not count it on its neighbour: `[#8;H1]` matched `CO` and missed
+  `[2H]OC`. It counts it now, as RDKit does; `h<n>` keeps the atom's own
+  count. On the 1 373 ChEMBL molecules that write a hydrogen atom (0.047% of
+  2 897 819), the 56 corpus queries and 12 hydrogen-count queries moved 307
+  answers on 192 molecules, **every one toward RDKit**, and the seven queries
+  the defect was found on now equal RDKit's sets exactly. A Substructure query
+  given as SMILES asks for its bracket count plus the hydrogen atoms it names:
+  `C[NH2+]C` finds `[2H][NH+](C)C`. **Molecules without a hydrogen atom answer
+  exactly as before** — the pinned hit sets, and a 100 000-molecule ChEMBL
+  sample on both query paths. Charge parents, identity keys and tautomer forms
+  are unchanged.
+- **With stereochemistry enforced (`qopts=G`, `geometry=`), a chiral SMARTS is
+  read as RDKit reads it. This moves answers on ordinary molecules.** The
+  hydrogen of `[C@@H]` is its stereo hydrogen; that of `[C@@;H1]`,
+  `[C@@H;!R]`, `[C@@H,N]` or `[C@@h1]` is not. A query naming three
+  neighbours of a centre reads the target's fourth — its own hydrogen, or the
+  neighbour the query left unnamed — as its last, where before such a query
+  matched both enantiomers. Measured against RDKit with chirality on: over
+  170 000 rows (34 chiral queries × 5 000 chiral ChEMBL molecules) 2 864
+  answers moved and every row now equals RDKit's; over a 35 376-row grid of
+  bracket forms 9 617 moved and every row equals it. **No answer moved away
+  from RDKit** in any population, including about 494 000 rows an independent
+  review assembled. A chiral query written as SMILES, and every search
+  without `G`, answers as before; the release's own check — amphetamine over
+  the 3 004 drugs, 207 unlocked and 101 with `G` — is unchanged.
+
+### Changed
+
+- **The work limit on reading a molecule is 10⁸ units, half of 2.1.1's.** It
+  is counted work, not time, and on the small host the public demo runs on a
+  refusal at the old limit took about 1.9 s. Measured over the whole of
+  PubChem, 124 469 489 molecules: exactly one is over either limit — thirty
+  benzene rings joined into one macrocycle, which 2.1.0 took 103 s to index —
+  and the next costliest spends 71% of the new one. The 4 996 tautomer
+  reports compared for 2.1.1 are unchanged. ⚠ A single ring of 4 096 atoms,
+  read at the old limit, is now refused.
+
+### Known limitations
+
+- ⚠ **`/identity` does not see through hydrogens written as atoms.** A query
+  or a row spelled with `[H]` atoms — as some sketchers and molfile exports
+  write them — gets a different key from the same compound written without,
+  so each is "not held" against the other. Older than this release; not
+  fixed in it.
+- ⚠ **A ring sulfoxide written as SMARTS matches the wrong enantiomer under
+  `G`.** `C1CCC(C)[S@@]1=O` against `C[C@H]1CCC[S@@]1=O` answers yes here and
+  no in RDKit. Older, unchanged by this release; a sulfoxide outside a ring,
+  and the same query written as SMILES, are not affected.
+- **A SMILES query is stricter than RDKit's reading of one**, by
+  construction: it asks for the aromaticity and the bracket hydrogens it
+  writes, so `C` does not find benzene's carbons and `C[NH3+]` does not find
+  tetramethylammonium. And a radical written in a SMILES query — `[C]` — is
+  read as any aliphatic carbon, where RDKit matches it to nothing
+  closed-shell.
+- A SMILES query for a silane does not count a deuterium on the silicon
+  (`C[SiH3]` does not find `[2H][SiH2]C`, which RDKit does).
+- `/identity` still differs from RDKit's charge parent on metals bonded
+  covalently (`CC(=O)O[Na]` is not acetic acid here).
+- What "correct" means for `G`: it is RDKit as run — `G` is this server's own
+  letter — and RDKit's rule was inferred from its answers on the populations
+  above, not read from its source.
+- **Arthor has still not been compared with 2.x**; the public instance has
+  not answered since 2026-11-09, so its reading of hydrogen counts is not
+  known.
+
 ## 2.1.1 — 2026-11-13
 
 ⚠ **A fix for the limitation 2.1.0 shipped with: reading a query now has a

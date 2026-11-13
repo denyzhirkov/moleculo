@@ -61,8 +61,8 @@ it.
 
 ## Install
 
-**This README describes 2.1.1.** Download it from
-[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.1.1):
+**This README describes 2.2.0.** Download it from
+[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.2.0):
 the archive for your platform and `SHA256SUMS`, into one folder.
 
 ⚠ **Keep 1.1.0 away from a 2.0 index.** 1.1.0 reads index format 3 and has no
@@ -90,7 +90,7 @@ sha256sum -c --ignore-missing SHA256SUMS            # Linux, GNU coreutils
 ```
 
 ```
-./moleculo-2.1.1-aarch64-apple-darwin.tar.gz: OK
+./moleculo-2.2.0-aarch64-apple-darwin.tar.gz: OK
 ```
 
 ⚠ Without `--ignore-missing`, each archive you did not download is reported
@@ -105,8 +105,8 @@ grep aarch64-unknown-linux-musl SHA256SUMS | sha256sum -c
 Then unpack it and put the binary on your `PATH`:
 
 ```sh
-tar xzf moleculo-2.1.1-<platform>.tar.gz
-cd moleculo-2.1.1-<platform>
+tar xzf moleculo-2.2.0-<platform>.tar.gz
+cd moleculo-2.2.0-<platform>
 ./moleculo --version
 ```
 
@@ -815,9 +815,9 @@ what you would download.
 ```dockerfile
 # The published release binary, checked against the checksums pinned below.
 FROM alpine:3.20 AS fetch
-ARG VERSION=2.1.1
-ARG SHA256_AMD64=131915aefbe8fa2b4fa6417cf949a6d33d5cc50a0ab511ea9bf2d1f393d10b0c
-ARG SHA256_ARM64=aa52f702d7d9b6391f7a25c846f8bac850b09aa81e1d50a30c7b0e037448a863
+ARG VERSION=2.2.0
+ARG SHA256_AMD64=0c81ce74872bbed37b0dc39336fcd132d123ee5163a104f3a2824307d697675e
+ARG SHA256_ARM64=69dc57dfa82c5748fb5b53aa49c4868ae4b5503287040fef5c916171d5eeb543
 ARG TARGETARCH
 RUN case "$TARGETARCH" in \
       amd64) TARGET=x86_64-unknown-linux-musl  SUM=$SHA256_AMD64 ;; \
@@ -852,10 +852,10 @@ the legacy builder leaves it empty, so the build stops at `no moleculo build
 for` without saying why.
 
 ```sh
-docker build -t moleculo:2.1.1 .
+docker build -t moleculo:2.2.0 .
 docker run --rm -p 127.0.0.1:8080:8080 \
   -v /srv/indexes:/databases:ro \
-  moleculo:2.1.1
+  moleculo:2.2.0
 ```
 
 It builds for the machine you build on; `--platform linux/amd64` or
@@ -864,10 +864,10 @@ another version, change `VERSION` and both sums together, from that release's
 `SHA256SUMS`: a sum left behind fails the build at `sha256sum -c`, which is the
 point of pinning it.
 
-Run as written, on an arm64 Mac with Docker Desktop, for 2.1.1: the build
-printed `moleculo-2.1.1-aarch64-unknown-linux-musl.tar.gz: OK`, and the
+Run as written, on an arm64 Mac with Docker Desktop, for 2.2.0: the build
+printed `moleculo-2.2.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
 `linux/amd64` build the same for the x86-64 archive. The arm64 image, a
-3 004-molecule index mounted and `--network none`, read *healthy* within
+3 008-molecule index mounted and `--network none`, read *healthy* within
 5 seconds and `docker stop -t 40` ended it with exit code 0. Measured on
 2.0.0 with the same Dockerfile and not repeated: with one sum replaced by
 zeros the build stopped at `FAILED`; the image answered `/readyz` with
@@ -1007,7 +1007,7 @@ searched:
 | **256 levels** of nesting in one SMARTS expression (`;`, `,`, `&`, `!` and juxtaposition) | SMARTS | every walk over a query recurses once per level |
 | **two levels of `$()`**: `$($(C))` is read, `$($($(C)))` is not | SMARTS | each level multiplies the work of the levels below it |
 | **128 atoms** inside all of a query's `$()` together | SMARTS | a recursive search runs on the stack of the search that asked for it |
-| **2·10⁸ units of work** to perceive its rings and aromaticity (from 2.1.1) | SMILES | the five above bound a query's size, and some heavily fused ring systems inside them still took seconds to tens of seconds to read |
+| **10⁸ units of work** to perceive its rings and aromaticity (from 2.1.1) | SMILES | the five above bound a query's size, and some heavily fused ring systems inside them still took seconds to tens of seconds to read |
 
 ⚠ **These bound the server, not your chemistry.** Past them, one query held a
 core for seconds to minutes before any time limit applied — a 4 002-atom
@@ -1019,15 +1019,23 @@ held to the first five: they apply to queries only.
 ⚠ **The sixth is counted work, not time, and it is the one limit a collection
 is held to as well** — a row that costs more than that to read is refused at
 build, counted and named with the other refused rows, where before it was read
-slowly. The costliest of 2.9 M ChEMBL molecules, a C60 derivative, spends 1.9%
-of it. Refusing the worst query we could construct takes about 0.4 s and
-150 MB on an Apple-silicon laptop, and a refusal of the same kind took about
-1.9 s on the small x86-64 host the public demo runs on — it is a count of
-work, and what a unit costs is the machine's. Before 2.1.1 a 23 KB query
-inside the other five limits took 29.5 s and 2 GB to refuse on that laptop. ⚠ The count depends on how a molecule is written — by up to
-about a third on the shapes that reach the limit — so exactly at the edge one
-spelling of a compound is read and another refused. Nothing real is near the
-edge. PubChem has not been run against it.
+slowly. 2.1.1 held it to 2·10⁸; it is 10⁸ now. The costliest of 2.9 M
+ChEMBL molecules, a C60 derivative, spends 3.7% of it. Of the whole of PubChem
+(124 469 489 rows) exactly one molecule is over it — thirty benzene rings in one
+macrocycle, which 2.1.1 refused as well — and the next costliest spends
+70 669 004. What the lower limit newly refuses is a synthetic query, not a
+molecule from either collection: a single ring of 4 096 atoms, for one.
+Refusing the worst query we could construct takes about 0.2–0.3 s
+and 80 MB on an Apple-silicon laptop (0.4 s and 150 MB at 2·10⁸). On the small
+x86-64 host the public demo runs on, a refusal of the same kind took about
+1.9 s at 2·10⁸; at 10⁸ it is expected to be about half of that, and has not
+been measured there — it is a count of work, and what a unit costs is the
+machine's. Before 2.1.1 a 23 KB query inside the other five limits took
+29.5 s and 2 GB to refuse on that laptop. ⚠ The count depends on how a molecule
+is written — by up to about a third on the shapes that reach the limit — so
+exactly at the edge one spelling of a compound is read and another refused.
+Nothing real is near the edge: the margin over the costliest molecule admitted
+from PubChem is 1.4×.
 
 ### Do you already hold this compound?
 
@@ -1089,6 +1097,12 @@ relying on it, both of which matter.
 
 The query is SMILES. The count is **exhaustive**: if a fragment occurs in
 700 000 compounds, that is the number you get, not "more than 20 000".
+
+The query is read as written: `C` is an aliphatic carbon and `c` an aromatic
+one, and a bracket hydrogen count is a requirement — `C[NH3+]` finds
+methylammonium and not tetramethylammonium. `RDKit`, matching the same SMILES
+as a molecule, asks neither, so it finds benzene with `C` and both cations
+with `C[NH3+]`.
 
 ```sh
 curl -G 'http://localhost:8080/dt/mydb/search' \
@@ -1752,7 +1766,7 @@ longer liveness timeout:
 ```yaml
 containers:
   - name: moleculo
-    image: moleculo:2.1.1         # built from the Dockerfile above, in your registry
+    image: moleculo:2.2.0         # built from the Dockerfile above, in your registry
     ports: [{ containerPort: 8080 }]
     startupProbe:
       httpGet: { path: /healthz, port: 8080 }
@@ -2211,8 +2225,17 @@ Everything else on the list does something this does not.
   seconds of one core to read, on a search, on `/identity` and on the tautomer
   report. ⚠ What is left: the bound is a count of work that depends on how a
   molecule is written; a tautomer report or an `/identity` answer that runs out
-  says it is incomplete rather than guessing; and the limit has been run
-  against ChEMBL, not against PubChem.
+  says it is incomplete rather than guessing; and the limit has been measured
+  over ChEMBL and over the whole of PubChem, where one molecule of 124 469 489
+  is over it, but tautomer reports were not run over PubChem.
+- ⚠ **`/identity` does not see through hydrogens written as atoms.** A query or
+  a row spelled with `[H]` atoms gets a different key from the same compound
+  written without, so each is "not held" against the other. Sketchers and
+  molfile exports that write hydrogens produce such spellings.
+- ⚠ **A ring sulfoxide written as SMARTS matches the wrong enantiomer under
+  `G`**: `C1CCC(C)[S@@]1=O` against `C[C@H]1CCC[S@@]1=O` answers yes here and
+  no in RDKit. The same query written as SMILES, and a sulfoxide outside a
+  ring, are not affected.
 - **`fmt=sdf` can state less stereochemistry than it could, and on a fused
   macrocycle it may state a wrong isomer.** Measured against `RDKit` over five
   populations anyone can rebuild — world-drugs, real-space, mcule, and ChEMBL
@@ -2295,12 +2318,18 @@ Everything else on the list does something this does not.
   liquids under a shared anion. Inherited from the reference's own rule; no
   endpoint design fixes it.
 
-  ⚠ **Ask it about compounds, not about general structures.** Its per-row work
-  is a standardisation rather than a scan step, so candidates are filtered by
-  heavy-atom count first — asked for benzene against 2.9 M rows it rejects
-  **2 440 588 candidates and standardises one**. Rejecting still costs a parse,
-  so the loop carries the same wall clock a search does and benzene comes back
-  at the deadline with `"complete": false`. Use `/search` for that question.
+  ⚠ **It answers about compounds, not about structures they contain.** Asked
+  for benzene it returns the rows that *are* benzene — the liquid, its solvates
+  — not every molecule with a phenyl ring; that question is `/search`. Its
+  per-row work is a standardisation rather than a scan step, so the candidates
+  are the rows holding the query's parent as a whole piece, and only those are
+  standardised. On a seeded 100 000-row sample of ChEMBL, benzene standardises
+  2 rows and answers in 0.18 s, water 60 rows in 0.06 s, ethanol 2 in 0.13 s,
+  imatinib none in 0.09 s — all `"complete": true`. Up to 2.1.1 the candidates
+  were every row *containing* the parent: on that same sample benzene
+  standardised 84 135 rows and took 9.2 s, and on the whole of ChEMBL it came
+  back at the deadline with `"complete": false`. These figures are from the
+  100 000-row sample, on a laptop in use; the whole of ChEMBL was not re-run.
 - **The identity key is not yet invariant to how a molecule was written, and on
   fullerene cages it essentially never is.** Hand `/dt/{db}/identity` the same compound
   spelled two different ways and **2 in 40 000 give two different keys** (the
