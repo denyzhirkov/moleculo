@@ -1028,9 +1028,9 @@ molecule from either collection: a single ring of 4 096 atoms, for one.
 Refusing the worst query we could construct takes about 0.2–0.3 s
 and 80 MB on an Apple-silicon laptop (0.4 s and 150 MB at 2·10⁸). On the small
 x86-64 host the public demo runs on, a refusal of the same kind took about
-1.9 s at 2·10⁸; at 10⁸ it is expected to be about half of that, and has not
-been measured there — it is a count of work, and what a unit costs is the
-machine's. Before 2.1.1 a 23 KB query inside the other five limits took
+1.9 s at 2·10⁸ and about 0.85 s at 10⁸ (a `400` in 1.05–1.13 s against
+0.23–0.26 s for a plain request, 2.2.0) — it is a count of work, and what a
+unit costs is the machine's. Before 2.1.1 a 23 KB query inside the other five limits took
 29.5 s and 2 GB to refuse on that laptop. ⚠ The count depends on how a molecule
 is written — by up to about a third on the shapes that reach the limit — so
 exactly at the edge one spelling of a compound is read and another refused.
