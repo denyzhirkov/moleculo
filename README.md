@@ -1021,8 +1021,10 @@ is held to as well** — a row that costs more than that to read is refused at
 build, counted and named with the other refused rows, where before it was read
 slowly. The costliest of 2.9 M ChEMBL molecules, a C60 derivative, spends 1.9%
 of it. Refusing the worst query we could construct takes about 0.4 s and
-150 MB; before 2.1.1 a 23 KB query inside the other five limits took 29.5 s and
-2 GB to refuse. ⚠ The count depends on how a molecule is written — by up to
+150 MB on an Apple-silicon laptop, and a refusal of the same kind took about
+1.9 s on the small x86-64 host the public demo runs on — it is a count of
+work, and what a unit costs is the machine's. Before 2.1.1 a 23 KB query
+inside the other five limits took 29.5 s and 2 GB to refuse on that laptop. ⚠ The count depends on how a molecule is written — by up to
 about a third on the shapes that reach the limit — so exactly at the edge one
 spelling of a compound is read and another refused. Nothing real is near the
 edge. PubChem has not been run against it.

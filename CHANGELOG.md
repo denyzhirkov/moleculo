@@ -15,8 +15,10 @@ an index 2.0.0 or 2.1.0 built is served unchanged.
 - **Perceiving a molecule's rings and aromaticity is held to 2·10⁸ units of
   counted work**, charged before the work is done and before its memory is
   taken. A query past it is a `400` naming the limit. The worst query we could
-  construct is refused in about 0.4 s and 150 MB; before, a 23 KB query inside
-  every other limit took 29.5 s and 2 GB to refuse.
+  construct is refused in about 0.4 s and 150 MB on an Apple-silicon laptop;
+  before, a 23 KB query inside every other limit took 29.5 s and 2 GB to
+  refuse there. ⚠ The limit is a count of work, not a time: on the small
+  x86-64 host the public demo runs on, a refusal took about 1.9 s.
 - **The tautomer report and `/identity` no longer perceive the same molecule
   over and over.** A report perceives the rings once and each state's
   aromaticity once; an `/identity` key works within one allowance. Two
