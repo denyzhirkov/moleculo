@@ -61,8 +61,8 @@ it.
 
 ## Install
 
-**This README describes 2.2.0.** Download it from
-[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.2.0):
+**This README describes 2.3.0.** Download it from
+[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.3.0):
 the archive for your platform and `SHA256SUMS`, into one folder.
 
 ⚠ **Keep 1.1.0 away from a 2.0 index.** 1.1.0 reads index format 3 and has no
@@ -90,7 +90,7 @@ sha256sum -c --ignore-missing SHA256SUMS            # Linux, GNU coreutils
 ```
 
 ```
-./moleculo-2.2.0-aarch64-apple-darwin.tar.gz: OK
+./moleculo-2.3.0-aarch64-apple-darwin.tar.gz: OK
 ```
 
 ⚠ Without `--ignore-missing`, each archive you did not download is reported
@@ -105,8 +105,8 @@ grep aarch64-unknown-linux-musl SHA256SUMS | sha256sum -c
 Then unpack it and put the binary on your `PATH`:
 
 ```sh
-tar xzf moleculo-2.2.0-<platform>.tar.gz
-cd moleculo-2.2.0-<platform>
+tar xzf moleculo-2.3.0-<platform>.tar.gz
+cd moleculo-2.3.0-<platform>
 ./moleculo --version
 ```
 
@@ -815,9 +815,9 @@ what you would download.
 ```dockerfile
 # The published release binary, checked against the checksums pinned below.
 FROM alpine:3.20 AS fetch
-ARG VERSION=2.2.0
-ARG SHA256_AMD64=0c81ce74872bbed37b0dc39336fcd132d123ee5163a104f3a2824307d697675e
-ARG SHA256_ARM64=69dc57dfa82c5748fb5b53aa49c4868ae4b5503287040fef5c916171d5eeb543
+ARG VERSION=2.3.0
+ARG SHA256_AMD64=e037099bcab5c608d66cce47a1d759bb0f0a2fa34c47cfee0b99cfb2052db270
+ARG SHA256_ARM64=4d4c4419cf758b20a9af7dae24f77d38cbf6448ff558326397a7c6754ac576fb
 ARG TARGETARCH
 RUN case "$TARGETARCH" in \
       amd64) TARGET=x86_64-unknown-linux-musl  SUM=$SHA256_AMD64 ;; \
@@ -852,10 +852,10 @@ the legacy builder leaves it empty, so the build stops at `no moleculo build
 for` without saying why.
 
 ```sh
-docker build -t moleculo:2.2.0 .
+docker build -t moleculo:2.3.0 .
 docker run --rm -p 127.0.0.1:8080:8080 \
   -v /srv/indexes:/databases:ro \
-  moleculo:2.2.0
+  moleculo:2.3.0
 ```
 
 It builds for the machine you build on; `--platform linux/amd64` or
@@ -864,8 +864,8 @@ another version, change `VERSION` and both sums together, from that release's
 `SHA256SUMS`: a sum left behind fails the build at `sha256sum -c`, which is the
 point of pinning it.
 
-Run as written, on an arm64 Mac with Docker Desktop, for 2.2.0: the build
-printed `moleculo-2.2.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
+Run as written, on an arm64 Mac with Docker Desktop, for 2.3.0: the build
+printed `moleculo-2.3.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
 `linux/amd64` build the same for the x86-64 archive. The arm64 image, a
 3 008-molecule index mounted and `--network none`, read *healthy* within
 5 seconds and `docker stop -t 40` ended it with exit code 0. Measured on
@@ -1076,9 +1076,10 @@ so `database` plus `id` names one row and joins with a search's results. On a
 database of one shard it is the row's position, as it always was.
 
 `complete: false` means `matches` is a **floor**, for one of two reasons. The
-wall clock ran out, or a canonical search reached its work budget, either on
-your query or on a candidate row. In the second case a `warning` field says
-which. `key` is hex because a 128-bit key does not survive JSON's number type.
+wall clock ran out, or something counted did: a canonical search reached its
+work budget, or — from 2.3.0 — standardising a compound did not finish,
+either on your query or on a candidate row. In the second case a `warning`
+field says which. `key` is hex because a 128-bit key does not survive JSON's number type.
 `null` means your query has no key, which is not a key of its own. Such an
 answer always comes with `complete: false` and a `warning`, and an empty
 `matches`.
@@ -1766,7 +1767,7 @@ longer liveness timeout:
 ```yaml
 containers:
   - name: moleculo
-    image: moleculo:2.2.0         # built from the Dockerfile above, in your registry
+    image: moleculo:2.3.0         # built from the Dockerfile above, in your registry
     ports: [{ containerPort: 8080 }]
     startupProbe:
       httpGet: { path: /healthz, port: 8080 }
@@ -2228,14 +2229,31 @@ Everything else on the list does something this does not.
   says it is incomplete rather than guessing; and the limit has been measured
   over ChEMBL and over the whole of PubChem, where one molecule of 124 469 489
   is over it, but tautomer reports were not run over PubChem.
-- ⚠ **`/identity` does not see through hydrogens written as atoms.** A query or
-  a row spelled with `[H]` atoms gets a different key from the same compound
-  written without, so each is "not held" against the other. Sketchers and
-  molfile exports that write hydrogens produce such spellings.
-- ⚠ **A ring sulfoxide written as SMARTS matches the wrong enantiomer under
-  `G`**: `C1CCC(C)[S@@]1=O` against `C[C@H]1CCC[S@@]1=O` answers yes here and
-  no in RDKit. The same query written as SMILES, and a sulfoxide outside a
-  ring, are not affected.
+- **`/identity` sees through hydrogens written as atoms, and through an
+  alkali or alkaline-earth salt written with a bond, from 2.3.0.** Up to
+  2.2.0 a query or a row spelled with `[H]` atoms, or `CC(=O)O[Na]`, shared an
+  identity with nothing and was "not held" against the same compound written
+  plainly. ⚠ What is left: labelled hydrogens (`[2H]`, `[3H]`), `[H+]` and
+  `[H-]` stay atoms; **only Li, Na, K, Rb, Cs, Fr, Be, Mg, Ca, Sr, Ba and Ra
+  bonded to N, O or F are taken apart** — a zinc or copper salt written with
+  bonds is not the identity of its ionic spelling, where RDKit's parent would
+  be (42 ChEMBL rows); an oxide, fluoride or hydroxide of those twelve metals
+  is the identity of the bare metal ion, as its ionic spelling always was; and
+  nitrate, perchlorate and doubly charged anions are neutralised differently
+  from RDKit, at a cost on ChEMBL nobody has measured. Search is unchanged: a
+  hydrogen atom is still an atom to Substructure and SMARTS.
+- **Under `G`, a ring sulfoxide no longer matches its mirror image, from
+  2.3.0** — written as SMARTS or as SMILES. ⚠ 2.2.0 listed this for SMARTS
+  only and said a SMILES query was not affected; it was, at some atom orders.
+  ⚠ Three older defects under `G` remain, each rare in real data: a chiral
+  P–H or As–H centre written first in its string is read as its mirror image;
+  chirality written inside `$()` is ignored; and one enantiomer of some
+  dibenzo-fused systems can have two identity keys depending on how it is
+  written.
+- **The tautomer count on an empty answer depends on how the query is
+  written.** `Oc1ncccc1` reports 2 forms and `Oc1ccccn1` 3; two plain
+  spellings of 3 110 molecules differ on 286. From 2.3.0 a query written with
+  hydrogen atoms reports as its plain spelling does, no better.
 - **`fmt=sdf` can state less stereochemistry than it could, and on a fused
   macrocycle it may state a wrong isomer.** Measured against `RDKit` over five
   populations anyone can rebuild — world-drugs, real-space, mcule, and ChEMBL

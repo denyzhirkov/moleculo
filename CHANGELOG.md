@@ -1,5 +1,153 @@
 # Changelog
 
+## 2.3.0 — 2026-11-16
+
+⚠ **Answers moved in this release, all of them on `/identity` or under
+enforced stereochemistry (`qopts=G`), and one sentence of 2.2.0's notes is
+withdrawn.** `/identity` now sees through hydrogens written as atoms and
+through an alkali or alkaline-earth salt written with a bond; a ring
+sulfoxide no longer matches its mirror image under `G`. 2.2.0 said a ring
+sulfoxide query written as SMILES was not affected by that defect — it was.
+The index format is 4 as before and an index 2.0.0–2.2.0 built is served
+unchanged; nothing needs rebuilding. An ordinary search without `qopts=G`
+answers exactly as 2.2.0 did.
+
+### Answers moved
+
+- **Under enforced stereochemistry (`qopts=G`), a ring
+  sulfoxide no longer matches its mirror image, in SMARTS or in a SMILES
+  query.** A chiral atom with three bonds and one ring-closure digit is
+  mirrored only when the bonds it is matched through are all single, as when
+  the same string is read as a molecule. Before, the SMARTS reader mirrored it
+  whatever the bonds were. ⚠ **2.2.0's note that "the same query written as
+  SMILES is not affected" was wrong.** A SMILES query is written out and read
+  back as SMARTS, and for some atom orders a ring `S=O` or `S=N` query matched
+  the mirror image of its own molecule. Over 233 `ChEMBL` ring sulfoxides
+  written as `S=O`, 2 942 spellings as SMILES queries, 892 failed to find
+  themselves before (375 found the mirror) and none fail now
+  (`tools/oracle/stereo-self.py --sulfoxides`). Over 52 127 spellings of
+  chiral world-drugs, real-space and `ChEMBL` molecules, every query that
+  found its molecule before still does. Over 1 169 832 rows of one-centre
+  molecules written every way (`tools/oracle/stereo-centres.py --seed 13
+  --spellings 40`), every query now answers as the molecule's own spelling
+  does: 78 702 moved to that answer and none away from it. ⚠ This departs from
+  RDKit on purpose. RDKit decides from the first symbol written on the
+  centre's bonds, so `(=O)` and `(~O)`, or `-` and `=,-`, find opposite
+  enantiomers of one molecule there. We decide from the bond matched. 50 037
+  queries of that population now differ from RDKit, all of them a widened
+  bond.
+- **`/identity` reads a hydrogen written as an atom as RDKit
+  does.** A compound written with its hydrogens as atoms, as sketchers and
+  molfile exports write it — `[H][C@@](C)(N)C(=O)O`, `OC([H])([H])C`,
+  `[H][N+](C)(C)C.[Cl-]` — now has the identity of its plain spelling, in the
+  query and in a stored row; before, it shared an identity with nothing and
+  `/identity` answered "not held", `complete: true`. The hydrogens RDKit
+  removes on reading are folded into their neighbour's count before the charge
+  parent is taken; stereocentres keep their configuration, and a double bond
+  whose configuration a hydrogen carried keeps it, conjugated systems
+  included. Labelled hydrogens (`[2H]`, `[3H]`, `[1H]`), `[H+]`, `[H-]` and
+  `[H][H]` stay atoms. Measured on RDKit's own re-spellings with every
+  hydrogen an atom (`tools/oracle/explicit-hydrogen-spellings.py`): 67 586 of
+  67 587 on the committed corpora and all 40 000 on a 20 000-molecule ChEMBL
+  sample key as the plain spelling, against 57 and 8 before; the one left, a
+  deuterium-labelled amidinium, keys two ways in its plain spellings too.
+  Over 33 785 such spellings of 4 500 ChEMBL molecules with configured double
+  bonds, half of them conjugated systems, no double bond of 64 309 changes
+  its configuration through the fold (`tools/oracle/double-bond-stereo.py`,
+  seeds 4040 and 4041; 6 are lost on one molecule, by a normalisation rule
+  that loses them in the plain spelling and in RDKit too) — where RDKit's own
+  hydrogen removal gets 66 wrong. ⚠ That is a deliberate difference from
+  RDKit: `C/C=C(/[H])C(/[H])=C/C` is (Z,E) as written, and RDKit's default
+  reading returns (E,E). Not universal: a spelling whose marks contradict
+  themselves reads as its lowest mark does. Molecules without such a hydrogen
+  key exactly as before. Matching is unchanged: a hydrogen atom is still an
+  atom to Substructure and SMARTS.
+- **`/identity` takes apart a salt of an alkali or
+  alkaline-earth metal written with a bond.** `CC(=O)O[Na]`, `O=C1O[Mg]Oc2ccccc12`
+  or `CO[K]` had a parent that kept the metal and shared an identity with
+  nothing; a bond from Li, Na, K, Rb, Cs, Fr, Be, Mg, Ca, Sr, Ba or Ra to N, O
+  or F is now broken before the parent is chosen, with the charges RDKit
+  assigns, so such a row has the identity of the same salt written ionically
+  and of its acid — checked on every covalent/ionic pair of a hand-written
+  population of 80 molecules (`corpus/labelled-metals.smi`, 9 pairs). Where
+  RDKit itself keys the two spellings apart — sodium azide and a diazotate
+  written with a bond, whose RDKit parents are hydrazoic acid and the
+  protonated diazotate — the covalent spelling keys as the ionic one here. Bonds
+  from those metals to carbon, sulfur, chlorine, bromine or iodine (Grignard
+  reagents, organolithiums, `Cl[Ca]Cl`) and every other metal — zinc, copper,
+  platinum, tin, aluminium complexes — stay whole, which is deliberate and
+  differs from RDKit, whose parent of cisplatin is ammonia. In practice an
+  oxide, fluoride or hydroxide of these metals written with bonds now keys as
+  its ionic spelling always did: magnesium oxide as the bare `[Mg+2]`, the
+  same key as `[Mg+2].[F-].[F-]` and `[Mg+2].[OH-].[OH-]`, and lithium or
+  beryllium hydroxide as water, because between ions of one heavy atom each
+  the largest-fragment rule picks the heavier. On ChEMBL this moves 4 identity keys of
+  2 897 819 molecules (magnesium oxide, magnesium salicylate twice, a calcium
+  salt), each to the key of RDKit's parent; the committed corpora hold no such
+  bond and did not move. Search, the index and the stored records are
+  unchanged.
+- **The tautomer count of a query written with hydrogen
+  atoms.** An empty answer's `tautomerForms` counted a query spelled with its
+  hydrogens as atoms as though those hydrogens could not move, and
+  under-reported: 2 046 of 3 110 such spellings of the committed world-drugs
+  and labelled molecules reported fewer forms than the plain spelling. They
+  are now folded first. The count still depends on the spelling, as it did
+  for plain spellings before: two plain spellings of the same 3 110 molecules
+  report different form sets for 286. Queries without hydrogen atoms report
+  exactly as before.
+- **Normalisation rules 12 and 15 fire in every spelling.**
+  Whether a rule that puts a double bond on a ring atom applied depended on
+  which Kekulé structure the input's spelling gave, so `[O-]c1cccc[n+]1C` and
+  `O=c1ccccn1C` had different identities while `C[n+]1c([O-])cccc1` and
+  `O=c1ccccn1C` shared one. The ring is now re-solved after every rule, as
+  RDKit does; rule by rule against RDKit, no rule disagrees on any molecule of
+  the committed corpora, two 30 000-molecule ChEMBL samples or ten spellings
+  each of every molecule a rule touches in them (`tools/oracle/normalize-rules.py`).
+  34 identity keys moved on those populations, each to the key of RDKit's
+  normalised form.
+
+### Fixed
+
+- **The SMILES writer no longer writes a chiral atom with aromatic bonds as
+  its mirror image.** A phosphole's, thiophenium's or selenophenium's chiral
+  centre carrying one ring digit was written mirrored: `CC1=CC=C[P@@]1C`
+  came out as `c(c1C)cc[p@@]1C`, which is the other enantiomer to us and to
+  RDKit. This reached the hit highlight, the identity endpoint's displayed
+  parent, the tautomer report's strings, and a SMILES query, which is written
+  before it is matched. Over 264 spellings of 17 such molecules
+  (`tools/oracle/stereo-self.py --aromatic`), 72 written strings and 2
+  canonical ones were the mirror image before and none are now. As SMILES
+  queries under `G`, 262 of 264 find themselves, against 260 before. The 2
+  that do not are a separate defect, an opened P–H centre, and the same as
+  before. Identity keys never read this string and did not move. ChEMBL and
+  the bundled corpora hold no such centre, and their written strings are
+  byte-identical. Searches without `qopts=G` are unaffected.
+- **`/identity` says when standardising a compound gave up.** A
+  stored row whose standardisation did not settle, or whose rule search ran
+  out of steps, was counted as a different compound beside `complete: true`;
+  it now makes the answer `complete: false` with a `warning`. A query in that
+  state is answered `key: null`, `complete: false`, with the reason, where it
+
+### Still open
+
+- **With `qopts=G`, three older stereo defects remain**, each rare in real
+  data and none new: a chiral P–H or As–H centre written first in its string
+  is read as its mirror image; chirality written inside `$()` is ignored; and
+  one enantiomer of some dibenzo-fused systems can key two ways on
+  `/identity` depending on how it is written.
+- **`tautomerForms` depends on how the query is written**: `Oc1ncccc1`
+  reports 2 forms and `Oc1ccccn1` 3. Two plain spellings of 3 110 molecules
+  differ on 286.
+- **Metals outside groups 1 and 2 are never disconnected on `/identity`**, so
+  a zinc or copper salt written with bonds is not the identity of its ionic
+  spelling. RDKit disconnects 42 more ChEMBL rows than we do.
+- **Nitrate, perchlorate and doubly charged anions** are neutralised
+  differently from RDKit when a charge parent is taken (nitrate stays an
+  anion here; `[O-2]` becomes `[OH-]`). How many identities this moves on
+  ChEMBL has not been measured.
+- **Arthor's public instance has still not answered** (since 2026-11-09), so
+  nothing here is compared with it.
+
 ## 2.2.0 — 2026-11-13
 
 ⚠ **Answers moved in this release, and one wrong answer is fixed that every
