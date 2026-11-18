@@ -176,8 +176,8 @@ nothing malformed to notice.
 
 **`perception`** names the valence model behind the stored hydrogen counts, the
 ring definition with its limits, and the aromaticity model, e.g.
-`valence-1; relevant-cycles-1 (8, 256); aromaticity-1`. A reader does not need
-to parse it. It says how the stored hydrogens, ring counts and aromatic flags
+`valence-1; relevant-cycles-1 (8, 256); aromaticity-2` (2.7.0; `aromaticity-1`
+in a shard 2.0.0–2.6.0 built). A reader does not need to parse it. It says how the stored hydrogens, ring counts and aromatic flags
 were derived: a shard answers as it was built, and a chemistry fix reaches a
 shard only when it is rebuilt.
 

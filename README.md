@@ -61,8 +61,8 @@ it.
 
 ## Install
 
-**This README describes 2.3.0.** Download it from
-[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.3.0):
+**This README describes 2.8.0.** Download it from
+[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.8.0):
 the archive for your platform and `SHA256SUMS`, into one folder.
 
 ⚠ **Keep 1.1.0 away from a 2.0 index.** 1.1.0 reads index format 3 and has no
@@ -90,7 +90,7 @@ sha256sum -c --ignore-missing SHA256SUMS            # Linux, GNU coreutils
 ```
 
 ```
-./moleculo-2.3.0-aarch64-apple-darwin.tar.gz: OK
+./moleculo-2.8.0-aarch64-apple-darwin.tar.gz: OK
 ```
 
 ⚠ Without `--ignore-missing`, each archive you did not download is reported
@@ -105,8 +105,8 @@ grep aarch64-unknown-linux-musl SHA256SUMS | sha256sum -c
 Then unpack it and put the binary on your `PATH`:
 
 ```sh
-tar xzf moleculo-2.3.0-<platform>.tar.gz
-cd moleculo-2.3.0-<platform>
+tar xzf moleculo-2.8.0-<platform>.tar.gz
+cd moleculo-2.8.0-<platform>
 ./moleculo --version
 ```
 
@@ -581,8 +581,23 @@ hydrogens, rings, aromaticity — and the version of the rules that produced it.
 After an upgrade that changes those rules, the shard is served as built: the
 server logs one warning per such shard when it opens the database, and
 `/dt/data` adds a `perception` field with the stored version to that shard's
-index entries. Rebuild the shard from its input to take the new rules;
-`index migrate` converts only 1.x indexes.
+index entries. ⚠ **2.7.0 is the first release to change those rules**, so
+every index 2.0.0–2.6.0 built is named this way after upgrading to it. From
+2.6.0 the same command takes the new rules:
+
+```
+moleculo index migrate ./indexes/mydb
+  shard 0    re-perceived: 163 rows, 4 deleted
+  shard 1    already format 4 and current
+```
+
+It rebuilds each such shard from the records the shard itself holds — no input
+file is needed — with everything said above about a 1.x conversion: every row
+keeps its identifier, its record and its deletion, the generation does not
+move, each shard is swapped in whole, and a stopped run is finished by the
+next. A row the new rules can no longer store is deleted and listed in
+`<database>.migrate-refused.tsv`. Until 2.6.0 the only cure was a rebuild from
+the input.
 
 ⚠ **A database answered through other servers** (a coordinator with
 `parts.json`) holds no shards of its own, so the command refuses it. Run it on
@@ -815,9 +830,9 @@ what you would download.
 ```dockerfile
 # The published release binary, checked against the checksums pinned below.
 FROM alpine:3.20 AS fetch
-ARG VERSION=2.3.0
-ARG SHA256_AMD64=e037099bcab5c608d66cce47a1d759bb0f0a2fa34c47cfee0b99cfb2052db270
-ARG SHA256_ARM64=4d4c4419cf758b20a9af7dae24f77d38cbf6448ff558326397a7c6754ac576fb
+ARG VERSION=2.8.0
+ARG SHA256_AMD64=cf6706487dc75f5d192b22ee02f903f0b5b462622e6d053385bd38ee870e65e9
+ARG SHA256_ARM64=e24958012a7097dd8e8787c767caca946a753e9702236d34160b949a69164744
 ARG TARGETARCH
 RUN case "$TARGETARCH" in \
       amd64) TARGET=x86_64-unknown-linux-musl  SUM=$SHA256_AMD64 ;; \
@@ -852,10 +867,10 @@ the legacy builder leaves it empty, so the build stops at `no moleculo build
 for` without saying why.
 
 ```sh
-docker build -t moleculo:2.3.0 .
+docker build -t moleculo:2.8.0 .
 docker run --rm -p 127.0.0.1:8080:8080 \
   -v /srv/indexes:/databases:ro \
-  moleculo:2.3.0
+  moleculo:2.8.0
 ```
 
 It builds for the machine you build on; `--platform linux/amd64` or
@@ -864,11 +879,11 @@ another version, change `VERSION` and both sums together, from that release's
 `SHA256SUMS`: a sum left behind fails the build at `sha256sum -c`, which is the
 point of pinning it.
 
-Run as written, on an arm64 Mac with Docker Desktop, for 2.3.0: the build
-printed `moleculo-2.3.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
+Run as written, on an arm64 Mac with Docker Desktop, for 2.8.0: the build
+printed `moleculo-2.8.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
 `linux/amd64` build the same for the x86-64 archive. The arm64 image, a
 3 008-molecule index mounted and `--network none`, read *healthy* within
-5 seconds and `docker stop -t 40` ended it with exit code 0. Measured on
+6 seconds and `docker stop -t 40` ended it with exit code 0. Measured on
 2.0.0 with the same Dockerfile and not repeated: with one sum replaced by
 zeros the build stopped at `FAILED`; the image answered `/readyz` with
 `{"databases":1,"degraded":[],"status":"ready"}` and a benzene search with
@@ -1485,6 +1500,16 @@ finishes.
 does not either; a second append started before the first finishes can report a
 failure that in fact succeeded, and a retry on that report duplicates a shard.
 
+**An append and a sharded build of the same database no longer drop each
+other's shards, from 2.7.1** — before, whichever finished last rewrote
+`database.json` from what it had read when it started, and the other's shard
+left the database with its directory still on disk. Each now lists into the
+file as it stands when it finishes. ⚠ That is not a lock: two writers finishing
+in the same instant can still lose one entry, and `index inspect` on the
+database after running both says whether every shard is named. A build
+*started* over a database that already holds an appended shard is refused, as
+before, and now says why.
+
 **If an append of a single-shard database is killed mid-swap**, the next append
 finishes it — but only when what it finds is exactly what an interrupted append
 leaves: `mydb` absent, `mydb.appending.building` the complete new layout, and
@@ -1767,7 +1792,7 @@ longer liveness timeout:
 ```yaml
 containers:
   - name: moleculo
-    image: moleculo:2.3.0         # built from the Dockerfile above, in your registry
+    image: moleculo:2.8.0         # built from the Dockerfile above, in your registry
     ports: [{ containerPort: 8080 }]
     startupProbe:
       httpGet: { path: /healthz, port: 8080 }
@@ -1916,11 +1941,20 @@ first time you ask for it and not before.
 being built. It is ours: its chemistry is the engine's own
 parser, perception and writer compiled to WebAssembly, so a drawing is read by
 the same code that searches it, and it wears the page's colours. It is inside
-the binary and needs no flag. ⚠ It is new and narrower than JSME: it writes
-SMILES only — no stereochemistry, no isotopes, no query features — and holds a
-drawing to 80 atoms. A structure read into it that carries something it cannot
-draw is drawn without it, and the note under the editor says what was left
-out. JSME is still what opens first.
+the binary and needs no flag. **From 2.8.0 it draws stereocentres**: the
+wedge and hash tools mark a single bond — click it near the stereocentre, which
+is the narrow end — and the SMILES in the field states the centre; a chiral
+SMILES read into it is drawn with its wedges. The same mark from the same end
+again removes it. Wedges are read by the engine as a molfile reader reads them,
+and checked against RDKit's reading of its own drawings: of 20 000 ChEMBL
+molecules drawn and wedged by RDKit, 19 894 read as the same molecule, 106
+with a centre left unstated, and none as a wrong one. ⚠ A wedge that cannot
+state a centre — on an atom with no fourth substituent, or on a centre whose
+other bonds run straight through it — is said under the editor and left out of
+the SMILES, never guessed. ⚠ It is still narrower than JSME: **double-bond
+geometry is not read from a drawing** (a `/` or `\` in a SMILES read in is
+named as left out), and it draws no isotopes and no query features, and holds
+a drawing to 80 atoms. JSME is still what opens first.
 
 **A third editor, if you bring one.** Start the server with
 `--ketcher-dir <directory>` pointing at an unpacked
@@ -2245,11 +2279,15 @@ Everything else on the list does something this does not.
 - **Under `G`, a ring sulfoxide no longer matches its mirror image, from
   2.3.0** — written as SMARTS or as SMILES. ⚠ 2.2.0 listed this for SMARTS
   only and said a SMILES query was not affected; it was, at some atom orders.
-  ⚠ Three older defects under `G` remain, each rare in real data: a chiral
-  P–H or As–H centre written first in its string is read as its mirror image;
-  chirality written inside `$()` is ignored; and one enantiomer of some
-  dibenzo-fused systems can have two identity keys depending on how it is
-  written.
+  ⚠ Three older defects are fixed. From 2.7.0 a ring bond written with an
+  explicit `-` between two aromatic atoms no longer makes a second molecule:
+  `o1c2ccccc2-c2ccccc21` and `c1ccc2c(c1)oc1ccccc12` are one dibenzofuran
+  with one identity key (2.3.0 described this as some dibenzo-fused systems
+  having two keys; it was never about stereochemistry). From 2.4.0 a chiral P–H or As–H centre with two
+  bonds is no longer read as its mirror image when reached from a
+  neighbouring atom (2.3.0's note said *when written first*, which was the
+  wrong way round). From 2.5.0 chirality written inside `$()` is enforced:
+  `[$(Q)]` finds what `Q` finds.
 - **The tautomer count on an empty answer depends on how the query is
   written.** `Oc1ncccc1` reports 2 forms and `Oc1ccccn1` 3; two plain
   spellings of 3 110 molecules differ on 286. From 2.3.0 a query written with

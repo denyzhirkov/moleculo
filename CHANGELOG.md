@@ -1,5 +1,155 @@
 # Changelog
 
+## 2.8.0 — 2026-11-18
+
+No search answer moved and nothing needs rebuilding beyond what 2.7.0 asks.
+
+### Added
+
+- **The built-in structure editor draws stereocentres.** Two tools, wedge and
+  hash: click a single bond near its stereocentre and the SMILES in the query
+  field states the centre; a chiral SMILES read into the editor is drawn with
+  its wedges instead of being drawn without them. Wedges are read by the
+  engine, the way a molfile reader reads them. Checked against RDKit
+  2026.03.5 reading its own drawings: of 20 000 ChEMBL molecules, 19 894 read
+  as the same molecule, 106 with one centre left unstated and none wrongly;
+  through the editor's own model, in page coordinates, 1 817 of 1 817
+  world-drugs drawings. ⚠ A wedge that cannot state a centre is named under
+  the editor and left out of the SMILES. ⚠ Double-bond geometry is still not
+  read from a drawing, and a SMILES read in with `/` or `\` says so. Remember
+  that a drawn stereocentre constrains a search only under `qopts=G`.
+
+## 2.7.1 — 2026-11-18
+
+No answer moved and nothing needs rebuilding beyond what 2.7.0 asks.
+
+### Fixed
+
+- **An `index append` and a sharded `index build` running on one database no
+  longer drop each other's shards.** Whichever finished last rewrote
+  `database.json` from what it had read when it started; the other's shard
+  stayed on disk and left the database, with no message. Each now lists into
+  the file as it stands when it finishes. ⚠ This narrows the window from the
+  length of a build to an instant and is not a lock: run `index inspect` on
+  the database after running both. A build started over a database that
+  already holds an appended shard is still refused, and the refusal now names
+  `index append` as a cause.
+
+## 2.7.0 — 2026-11-18
+
+⚠ **Every index 2.0.0–2.6.0 built is now named stale, and one command
+rebuilds it: `moleculo index migrate <database>`.** It needs no input file and
+keeps every row identifier, record and deletion. Until you run it, the index
+is served exactly as before — the server logs one warning per shard at open
+and `/dt/data` carries a `perception` field on its entries. The format is 4 as
+before. ⚠ **An answer moved for one way of writing a molecule and for nothing
+else we hold**: no molecule of `ChEMBL` (2.9 million) or of the three
+committed corpora reads differently.
+
+### Answers moved
+
+- **A ring bond written with an explicit `-` between two aromatic atoms is
+  perceived like any other bond.** Since 0.x such a bond was never marked
+  aromatic, on the ground that the author had called it single. That made
+  aromaticity depend on the spelling: `o1c2ccccc2-c2ccccc21` and
+  `c1ccc2c(c1)oc1ccccc12` are one dibenzofuran, and they had two `/identity`
+  keys and answered a query for the aromatic bond differently. They are now
+  one molecule, as RDKit 2026.03.5 reads them: 15 of 15 hand-written probes
+  agree with it where 5 did not. A string in which the bond really is single
+  — biphenyl's link, fluorene's five-ring, the riboflavin core — reads as
+  before, because the ring model says so and no longer the dash. ⚠ 2.3.0
+  listed this as *one enantiomer of some dibenzo-fused systems can have two
+  identity keys*; it was never about stereochemistry. ⚠ PubChem writes no
+  aromatic bonds at all and cannot hold the case.
+
+### What to do
+
+Run `moleculo index migrate <database>` once per database, at a time of your
+choosing; see *Upgrading* in the README for time, disk and what a stopped run
+leaves. A query is read by the new rules at once, so until a stale shard is
+rebuilt a query written with such a `-` and a row written with one can
+disagree — on a collection that holds such rows. A database served through
+other servers is migrated on each part's machine.
+
+### Still true
+
+Everything 2.6.0 listed. One row found on the way is open: a chiral mark on
+an atom that is not a stereocentre stays in the `/identity` key, so
+`C[P@@]1c2ccccc2-c2ccccc21` and the same molecule without the mark have two.
+
+## 2.6.0 — 2026-11-18
+
+No answer moved. The index format is 4 as before; nothing needs rebuilding.
+
+### Added
+
+- **`index migrate` rebuilds a 2.x shard built before a chemistry change.** A
+  2.x shard stores the chemistry it perceived at build, so after an upgrade
+  that changes those rules it is served as built and named in `/dt/data`.
+  Until now the only way to take the new rules was to build again from the
+  input. `moleculo index migrate <database>` now rebuilds each such shard from
+  the records it already holds, with everything a 1.x conversion promises:
+  every row keeps its identifier, its record and its deletion, the generation
+  does not move, each shard is swapped in whole, and a stopped run is finished
+  by the next. A row the new rules can no longer store is deleted and listed
+  in `<database>.migrate-refused.tsv`. A shard that is already current prints
+  `already format 4 and current`. ⚠ No release has changed those rules yet, so
+  no index is stale today; the next one that does will say so first.
+
+## 2.5.0 — 2026-11-18
+
+⚠ **An answer moved, only under enforced stereochemistry (`qopts=G`) and only
+for a SMARTS that draws a stereocentre inside `$()`.** The index format is 4
+as before; nothing needs rebuilding. Every other search answers exactly as
+2.4.0 did.
+
+### Answers moved
+
+- **Under `G`, a stereocentre written inside `$()` is enforced.** Before, only
+  the outer pattern was, so `[$(C[S@@+]1CCCC1(C)C)]` found both enantiomers.
+  Now `[$(Q)]` finds what `Q` finds, at either depth of `$()` and under `!`,
+  `,` and `;`. Over 1 898 chiral queries wrapped that way and asked of their
+  own molecule and its mirror image (`tools/oracle/recursive-rows.py`), all
+  1 336 that find the molecule bare found both enantiomers wrapped; now every
+  one answers as it does bare. ⚠ This is not RDKit's answer everywhere. RDKit
+  2026.03.5 enforces inside `$()` too, but on 564 of those 1 898 it answers
+  differently wrapped than bare — 168 find the mirror image and 396 find
+  nothing. This engine answers the same both ways.
+
+### Still true
+
+Everything 2.4.0 listed. An aromatic ring written with alternating bonds and
+read as SMARTS still finds neither enantiomer under `G`, wrapped or not.
+
+## 2.4.0 — 2026-11-18
+
+⚠ **An answer moved, for one rare kind of stereocentre and nothing else.**
+The index format is 4 as before; nothing needs rebuilding. A search over a
+collection that holds no chiral secondary phosphine or arsine answers exactly
+as 2.3.0 did — and `ChEMBL` and the first ten million compounds of `PubChem`
+hold none.
+
+### Answers moved
+
+- **A chiral atom with one hydrogen and two bonds — a secondary phosphine or
+  arsine, `C[P@H]CC` — is read as RDKit reads it.** When the atom was reached
+  from a neighbour rather than opening the string, 2.3.0 and earlier read it
+  as the mirror image, so two spellings of one compound had different
+  `/identity` keys and, under enforced stereochemistry (`qopts=G`), some
+  spellings found the other enantiomer. Over 201 spellings of 14 molecules
+  written from every atom (`tools/oracle/hydrogen-centre-spellings.py`), 58 of
+  the 72 such centres were mirrored against RDKit 2026.03.5 and none is now;
+  the 129 centres of other kinds did not move. ⚠ As in RDKit, the same centre
+  written with its hydrogen as an atom follows the ordinary rule, so
+  `C[P@]([H])CC` and `C[P@H]CC` are opposite enantiomers. ⚠ As a SMARTS under
+  `G`, RDKit does not enforce such a centre at all and matches both
+  enantiomers; this engine enforces it.
+
+### Still true
+
+Everything 2.3.0 listed under *Known limitations* that this entry does not
+name. Chirality inside `$()` is still not enforced under `G`.
+
 ## 2.3.0 — 2026-11-16
 
 ⚠ **Answers moved in this release, all of them on `/identity` or under
