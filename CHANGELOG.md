@@ -1,5 +1,60 @@
 # Changelog
 
+## 2.16.0 — 2026-11-19
+
+No search answer moved and nothing needs rebuilding.
+
+### Added
+
+- **The built-in structure editor draws mass numbers and exact hydrogen
+  counts.** The panel the query tool opens on an atom has two more fields,
+  about what the atom *is*: a mass number, and a hydrogen count that stands
+  whatever the bonds say. `[13CH4]`, `[2H]O[2H]`, a radical `C[CH2]`, a
+  carbene `C[CH]C` are read into the editor with nothing lost — they used to
+  be drawn as the plain molecule, with *isotopes* or *hydrogen counts* named
+  as left out — and written back as the same molecule. Only an atom that
+  needs its count said carries one; every other atom's hydrogens are still
+  the valence model's. Both travel with a copy and survive clean-up.
+  On an atom that also carries a question, they are part of the question:
+  `[#6,#7;13*;H2]`. Isotope questions were run through RDKit over 7 080
+  ChEMBL molecules, 3 084 of them holding an isotope — the three collections
+  the other rows use hold none: RDKit finds what we find for each written
+  SMARTS, and what it finds for the same question written by hand.
+
+### Fixed
+
+- **A stereocentre with four drawn neighbours is read from a drawing.** In
+  the built-in editor a wedge on a centre without a hydrogen — a quaternary
+  carbon, a centre whose hydrogen is drawn — was refused as stating nothing,
+  and a SMILES read into the editor came back without that centre and
+  **without a word**. The lift a wedge gives its atom was a fixed length
+  sized for a molfile's bond, and on a page, where a bond is many times
+  longer, it was too small to read. It is proportional to the bond now. Of
+  4 734 ChEMBL molecules with stereochemistry read into the editor and
+  written back, RDKit calls 4 720 the same molecule and the editor names what
+  it lost on the other 14; before, 592 of 3 909 came back as a different
+  molecule with nothing said. This has been so since the editor first drew a
+  wedge.
+- **A wedge is drawn on a single bond.** A phosphine oxide's phosphorus or a
+  sulfoximine's sulfur could be given its mark on the `=O`, which the editor
+  cannot draw; the centre was lost, silently. Single bonds are tried first.
+  ⚠ This also moves which bond carries the wedge in some **molfile and SD
+  output**: 36 lines differ over 30 000 ChEMBL molecules, and RDKit reads the
+  same configuration from both — 10 576 of 10 579 before and after.
+- **What a drawing cannot state is said.** A centre whose wedge does not read
+  back, a double bond a drawing takes no geometry from (a ring oxime between
+  two stereocentres), a mass number outside 1–999: each is named when the
+  SMILES is read in, where a wedge merely *existing* used to count as kept.
+
+### Still true
+
+- ⚠ **An atom map is not drawn.** `[CH3:1]` is read as the atom without its
+  map, and the editor says so.
+- ⚠ A hydrogen count the drawing says is one the search holds a row to, as
+  it does a count written in a SMILES: `C[NH2]` does not find a
+  dimethylamine.
+- Everything 2.15.0 listed.
+
 ## 2.15.0 — 2026-11-19
 
 No search answer moved and nothing needs rebuilding.
