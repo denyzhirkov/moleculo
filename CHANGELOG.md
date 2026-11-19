@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.15.0 — 2026-11-19
+
+No search answer moved and nothing needs rebuilding.
+
+### Added
+
+- **Clean-up in the built-in structure editor.** One button lays the drawing
+  out again with the engine's own layout — the one a SMILES read into the
+  editor is drawn with — and redraws the wedges and the crossed bonds that
+  layout needs. Questions on atoms and bonds stay where they were. It is one
+  edit, undone by one undo.
+- **A chain tool.** Drag, and a zigzag chain is drawn as long as the drag,
+  from the atom the drag began on or from a new one; a click grows by one.
+- **Rings of seven and eight** beside the three to six.
+
+### Still true
+
+- ⚠ **Clean-up is applied only if the drawing then states what it stated.**
+  The drawing is described before and after; if the two differ — a centre
+  the new layout has no wedge for, a double bond it draws with both
+  neighbours on one side — nothing is changed and the editor says so.
+- ⚠ A chain is not joined to atoms it is drawn across.
+- ⚠ Looked at in Chrome, by eye and by test. Safari, Firefox and touch are
+  unchecked.
+- Everything 2.14.0 listed.
+
 ## 2.14.0 — 2026-11-19
 
 No search answer moved and nothing needs rebuilding.
