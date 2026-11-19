@@ -1,5 +1,60 @@
 # Changelog
 
+## 2.13.0 — 2026-11-19
+
+No search answer moved and nothing needs rebuilding.
+
+### Added
+
+- **The built-in structure editor draws query features, and writes them as
+  SMARTS.** A new tool, *query*. Click an atom and a panel asks what it may
+  be: as drawn, any atom, one of a list of elements, none of a list; with a
+  hydrogen count, a connection count, in a ring or in none, aromatic or
+  aliphatic. Click a bond and it becomes *any bond*, a second time *a ring
+  bond* of the order drawn, a third time plain. A drawing with a feature is
+  written as SMARTS into the query field and the search type moves to SMARTS;
+  one without is a SMILES as before. Atoms drawn plain keep their wedges and
+  their cis and trans.
+  How it is written: the engine's SMILES writer walks the drawing as it
+  always did — order, ring numbers, each stereocentre turned for the order
+  its neighbours come out in — and each feature's text stands where its atom
+  or bond would have. Nothing compiles a pattern back into text.
+  Measured against RDKit 2026.03.5 on 29 rows covering every feature, over
+  world-drugs, mcule and real-space (22 423 molecules): for each written
+  SMARTS RDKit finds the molecules we find, and — with configuration
+  enforced — the molecules it finds for the same question written by hand in
+  other primitives; six control rows whose hand-written SMARTS asks something
+  else come out different wherever the collection holds anything to differ
+  on.
+
+### Fixed
+
+- The note under the editor still said *no stereo or query features yet*;
+  2.8.0 had made the first half of that false.
+
+### Still true
+
+- ⚠ **An atom with a query feature states no configuration**; a wedge on it
+  is refused under the editor. A bond drawn as a question carries no `/` or
+  `\`, so a double bond that needed it for its cis or trans is written
+  without one — said under the editor, never the other isomer.
+- ⚠ **A query atom is perceived as the element it was drawn as.** That is
+  what keeps a ring aromatic with *any atom* in it; it also means a drawing
+  that is not a valid molecule for the drawn element is refused even where
+  the question would allow another.
+- ⚠ **One shape where RDKit can read the SMARTS as the mirror image**: a
+  ring sulfoxide or sulfilimine whose S=O or S=N bond is drawn as *any bond*,
+  searched with configuration enforced (`G`). In a sweep of 13 598 drawings
+  with one feature each, 33 — all of that shape — matched the drawn
+  enantiomer here and the other in RDKit; not every such drawing does. It is
+  the divergence 2.3.0 documented for `[S@@+]1=,-[O-]`, reached now from a
+  drawing.
+- ⚠ **A SMARTS typed or pasted into the field is not drawn**: reading one
+  into the editor is not done.
+- ⚠ Looked at in Chrome, by eye and by test. Safari, Firefox and touch are
+  unchecked.
+- Everything 2.12.0 listed.
+
 ## 2.12.0 — 2026-11-19
 
 No search answer moved and nothing needs rebuilding.

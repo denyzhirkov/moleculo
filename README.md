@@ -61,8 +61,8 @@ it.
 
 ## Install
 
-**This README describes 2.12.0.** Download it from
-[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.12.0):
+**This README describes 2.13.0.** Download it from
+[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.13.0):
 the archive for your platform and `SHA256SUMS`, into one folder.
 
 ⚠ **Keep 1.1.0 away from a 2.0 index.** 1.1.0 reads index format 3 and has no
@@ -90,7 +90,7 @@ sha256sum -c --ignore-missing SHA256SUMS            # Linux, GNU coreutils
 ```
 
 ```
-./moleculo-2.12.0-aarch64-apple-darwin.tar.gz: OK
+./moleculo-2.13.0-aarch64-apple-darwin.tar.gz: OK
 ```
 
 ⚠ Without `--ignore-missing`, each archive you did not download is reported
@@ -105,8 +105,8 @@ grep aarch64-unknown-linux-musl SHA256SUMS | sha256sum -c
 Then unpack it and put the binary on your `PATH`:
 
 ```sh
-tar xzf moleculo-2.12.0-<platform>.tar.gz
-cd moleculo-2.12.0-<platform>
+tar xzf moleculo-2.13.0-<platform>.tar.gz
+cd moleculo-2.13.0-<platform>
 ./moleculo --version
 ```
 
@@ -830,9 +830,9 @@ what you would download.
 ```dockerfile
 # The published release binary, checked against the checksums pinned below.
 FROM alpine:3.20 AS fetch
-ARG VERSION=2.12.0
-ARG SHA256_AMD64=a73e957953dc4788390f353a7f878c6e38df3fb9bf0f29d7ed32b861623343d9
-ARG SHA256_ARM64=f3f97de628cf3390e97964b4058fe7aba9c27953e048792b465e9d2e071e056a
+ARG VERSION=2.13.0
+ARG SHA256_AMD64=575a5c4975defb06fa889a7337c739755fb0e0905b1f6008b6614f5b80cb8ee3
+ARG SHA256_ARM64=14055315d2ab13715941c03cfb1c86ce05a62100affe15bc799716d712d21d63
 ARG TARGETARCH
 RUN case "$TARGETARCH" in \
       amd64) TARGET=x86_64-unknown-linux-musl  SUM=$SHA256_AMD64 ;; \
@@ -867,10 +867,10 @@ the legacy builder leaves it empty, so the build stops at `no moleculo build
 for` without saying why.
 
 ```sh
-docker build -t moleculo:2.12.0 .
+docker build -t moleculo:2.13.0 .
 docker run --rm -p 127.0.0.1:8080:8080 \
   -v /srv/indexes:/databases:ro \
-  moleculo:2.12.0
+  moleculo:2.13.0
 ```
 
 It builds for the machine you build on; `--platform linux/amd64` or
@@ -879,8 +879,8 @@ another version, change `VERSION` and both sums together, from that release's
 `SHA256SUMS`: a sum left behind fails the build at `sha256sum -c`, which is the
 point of pinning it.
 
-Run as written, on an arm64 Mac with Docker Desktop, for 2.12.0: the build
-printed `moleculo-2.12.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
+Run as written, on an arm64 Mac with Docker Desktop, for 2.13.0: the build
+printed `moleculo-2.13.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
 `linux/amd64` build the same for the x86-64 archive. The arm64 image, a
 3 008-molecule index mounted and `--network none`, read *healthy* within
 6 seconds and `docker stop -t 40` ended it with exit code 0. Measured on
@@ -1800,7 +1800,7 @@ longer liveness timeout:
 ```yaml
 containers:
   - name: moleculo
-    image: moleculo:2.12.0         # built from the Dockerfile above, in your registry
+    image: moleculo:2.13.0         # built from the Dockerfile above, in your registry
     ports: [{ containerPort: 8080 }]
     startupProbe:
       httpGet: { path: /healthz, port: 8080 }
@@ -1978,8 +1978,22 @@ said under the editor; RDKit would take one neighbour's word there. **From
 takes atoms one by one (shift adds), a drag on the selection moves all of it,
 Delete removes it, Ctrl+C and Ctrl+V copy and paste it with its wedges and
 crossed bonds, Ctrl+A takes everything and Escape lets go. ⚠ A fragment moved
-or pasted onto atoms already drawn is not joined to them. ⚠ It is
-still narrower than JSME: it draws no isotopes and no query features, and holds
+or pasted onto atoms already drawn is not joined to them. **From 2.13.0 it
+draws query features**: the query tool opens a panel on an atom — any atom,
+one of a list of elements, none of a list, a hydrogen count, a connection
+count, in a ring or in none, aromatic or aliphatic — and a click on a bond
+makes it *any bond*, then *a ring bond*. A drawing with a feature is written
+as SMARTS, and the search type moves to SMARTS with it; the atoms drawn plain
+keep their stereochemistry, and a ring drawn aromatic stays aromatic with a
+query atom in it — benzene with one *any atom* finds every six-ring of five
+aromatic carbons and one more atom. Each feature's SMARTS was run through
+RDKit over three collections, 22 423 molecules: RDKit finds what we find for
+it, and what it finds for the same question written by hand. ⚠ An atom with
+a feature states no configuration, and a wedge on it is refused. ⚠ A bond
+drawn as a question carries no `/` or `\`: a double bond whose cis or trans
+needed that bond is written without it, and the editor says so. ⚠ A SMARTS
+typed into the field is not read back into the editor. ⚠ It is
+still narrower than JSME: it draws no isotopes, and holds
 a drawing to 80 atoms. JSME is still what opens first.
 
 **A third editor, if you bring one.** Start the server with
