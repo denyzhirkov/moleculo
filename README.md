@@ -61,8 +61,8 @@ it.
 
 ## Install
 
-**This README describes 2.16.0.** Download it from
-[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.16.0):
+**This README describes 2.17.0.** Download it from
+[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.17.0):
 the archive for your platform and `SHA256SUMS`, into one folder.
 
 ⚠ **Keep 1.1.0 away from a 2.0 index.** 1.1.0 reads index format 3 and has no
@@ -90,7 +90,7 @@ sha256sum -c --ignore-missing SHA256SUMS            # Linux, GNU coreutils
 ```
 
 ```
-./moleculo-2.16.0-aarch64-apple-darwin.tar.gz: OK
+./moleculo-2.17.0-aarch64-apple-darwin.tar.gz: OK
 ```
 
 ⚠ Without `--ignore-missing`, each archive you did not download is reported
@@ -105,8 +105,8 @@ grep aarch64-unknown-linux-musl SHA256SUMS | sha256sum -c
 Then unpack it and put the binary on your `PATH`:
 
 ```sh
-tar xzf moleculo-2.16.0-<platform>.tar.gz
-cd moleculo-2.16.0-<platform>
+tar xzf moleculo-2.17.0-<platform>.tar.gz
+cd moleculo-2.17.0-<platform>
 ./moleculo --version
 ```
 
@@ -830,9 +830,9 @@ what you would download.
 ```dockerfile
 # The published release binary, checked against the checksums pinned below.
 FROM alpine:3.20 AS fetch
-ARG VERSION=2.16.0
-ARG SHA256_AMD64=bc88f67f3e3486ed85a9be074f5b7015b98624e1cbdfb129b7842fd86f925a22
-ARG SHA256_ARM64=ac3ca957d3a452251c497b9d3bd0d3476bb6eb7368f0d6e25bcb7278802fcf67
+ARG VERSION=2.17.0
+ARG SHA256_AMD64=b74c8a12293b4cbc2e0975d10cf576454280427cbe444492a6fa6d6d46b5e054
+ARG SHA256_ARM64=978a2abc9c9e6c0203ba014063e0a8f40ac28181066494e4d6ee8375c3875517
 ARG TARGETARCH
 RUN case "$TARGETARCH" in \
       amd64) TARGET=x86_64-unknown-linux-musl  SUM=$SHA256_AMD64 ;; \
@@ -867,10 +867,10 @@ the legacy builder leaves it empty, so the build stops at `no moleculo build
 for` without saying why.
 
 ```sh
-docker build -t moleculo:2.16.0 .
+docker build -t moleculo:2.17.0 .
 docker run --rm -p 127.0.0.1:8080:8080 \
   -v /srv/indexes:/databases:ro \
-  moleculo:2.16.0
+  moleculo:2.17.0
 ```
 
 It builds for the machine you build on; `--platform linux/amd64` or
@@ -879,8 +879,8 @@ another version, change `VERSION` and both sums together, from that release's
 `SHA256SUMS`: a sum left behind fails the build at `sha256sum -c`, which is the
 point of pinning it.
 
-Run as written, on an arm64 Mac with Docker Desktop, for 2.16.0: the build
-printed `moleculo-2.16.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
+Run as written, on an arm64 Mac with Docker Desktop, for 2.17.0: the build
+printed `moleculo-2.17.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
 `linux/amd64` build the same for the x86-64 archive. The arm64 image, a
 3 008-molecule index mounted and `--network none`, read *healthy* within
 6 seconds and `docker stop -t 40` ended it with exit code 0. Measured on
@@ -1800,7 +1800,7 @@ longer liveness timeout:
 ```yaml
 containers:
   - name: moleculo
-    image: moleculo:2.16.0         # built from the Dockerfile above, in your registry
+    image: moleculo:2.17.0         # built from the Dockerfile above, in your registry
     ports: [{ containerPort: 8080 }]
     startupProbe:
       httpGet: { path: /healthz, port: 8080 }
@@ -2007,8 +2007,10 @@ draws mass numbers and exact hydrogen counts**: the same panel sets an atom's
 mass number (`[13CH3]`) and a hydrogen count that stands whatever its bonds
 say (`[CH2]`, a radical), and a SMILES that carries either is read in with
 nothing lost. ⚠ An atom map (`[CH3:1]`) is still not drawn, and is named as
-left out. ⚠ It holds
-a drawing to 80 atoms. JSME is still what opens first.
+left out. **From 2.17.0 it holds a drawing of 160 atoms**, where it held 80
+— 98.5% of ChEMBL fits in 80 and 99.6% in 160. ⚠ The automatic layout of a
+long flexible molecule read from SMILES — a peptide of a hundred atoms — is
+correct and crowded: bonds cross. JSME is still what opens first.
 
 **A third editor, if you bring one.** Start the server with
 `--ketcher-dir <directory>` pointing at an unpacked

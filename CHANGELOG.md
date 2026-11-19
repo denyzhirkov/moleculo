@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.17.0 — 2026-11-19
+
+No search answer moved and nothing needs rebuilding.
+
+### Changed
+
+- **The built-in structure editor holds a drawing of 160 atoms**; it held 80.
+  Of 144 890 ChEMBL molecules, 1.51% have more than 80 atoms and 0.41% more
+  than 160. The old limit rested on one shape timed on a heavily loaded
+  machine. Measured again: at 160 atoms an edit costs 1 to 3 ms for chains,
+  rings and peptides, 12 to 14 ms for fused sheets, and 54 ms for the worst
+  shape that is answered at all. The slowest edit there is — a refusal after
+  about 0.3 s, of a shape no molecule has — is the same at 80 atoms as at
+  160. All 1 587 sampled ChEMBL molecules of 81 to 160 atoms were read into
+  the editor and written back: RDKit calls 1 586 the same molecule, and the
+  editor names what it lost on the other.
+
+### Fixed
+
+- **A double bond drawn the other way round is said.** Reading a SMILES into
+  the editor lays the molecule out, and on a large ring the layout can draw
+  a trans bond cis. The editor checked that a geometry could be read from
+  the layout, not that it was the same one: one 34-membered polyene came
+  back with two bonds turned and nothing said. It is named as lost now.
+
+### Still true
+
+- ⚠ **The layout of a large flexible molecule is crowded.** A peptide of a
+  hundred atoms read from SMILES is drawn with bonds crossing. What is
+  written back is right; the picture is hard to read.
+- ⚠ An atom map is not drawn, and the editor says so.
+- Everything 2.16.0 listed.
+
 ## 2.16.0 — 2026-11-19
 
 No search answer moved and nothing needs rebuilding.
