@@ -1,5 +1,39 @@
 # Changelog
 
+## 2.14.0 — 2026-11-19
+
+No search answer moved and nothing needs rebuilding.
+
+### Added
+
+- **In the built-in structure editor, a carried fragment joins what it is
+  dropped on.** Select atoms, drag them, and let go with one of them on an
+  atom that was not moving: it is folded into that atom, which keeps its
+  place, its element, its charge and its question. While the fragment is
+  carried, the atoms it would join are marked. A ring dropped atom on atom
+  over a ring is one ring.
+- **Copy and paste go through the system clipboard.** A copy puts the
+  selection there twice: as the SMILES — or SMARTS — the engine writes for
+  it, which pastes into anything, and as the fragment itself, which pastes
+  into another editor on another page with its coordinates, wedges and
+  questions. A paste takes a fragment if the clipboard holds one and a SMILES
+  otherwise, so a structure copied from a paper, a spreadsheet or a search
+  result pastes in as a drawing.
+
+### Still true
+
+- ⚠ **A paste joins nothing by itself.** What was pasted lands under the
+  pointer, selected; carry it onto the atoms it should join.
+- ⚠ **Text that is not a SMILES is refused**, with the reason under the
+  editor, and nothing is pasted in its place. A SMARTS is such a text:
+  reading one into the editor is not done.
+- ⚠ A fragment from the clipboard is checked before it is used — elements the
+  engine knows, finite coordinates, bonds between its own atoms — and
+  refused whole if any of it is wrong.
+- ⚠ Looked at in Chrome, by eye and by test. Safari, Firefox and touch are
+  unchecked.
+- Everything 2.13.0 listed.
+
 ## 2.13.0 — 2026-11-19
 
 No search answer moved and nothing needs rebuilding.

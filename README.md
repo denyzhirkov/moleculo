@@ -61,8 +61,8 @@ it.
 
 ## Install
 
-**This README describes 2.13.0.** Download it from
-[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.13.0):
+**This README describes 2.14.0.** Download it from
+[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.14.0):
 the archive for your platform and `SHA256SUMS`, into one folder.
 
 ⚠ **Keep 1.1.0 away from a 2.0 index.** 1.1.0 reads index format 3 and has no
@@ -90,7 +90,7 @@ sha256sum -c --ignore-missing SHA256SUMS            # Linux, GNU coreutils
 ```
 
 ```
-./moleculo-2.13.0-aarch64-apple-darwin.tar.gz: OK
+./moleculo-2.14.0-aarch64-apple-darwin.tar.gz: OK
 ```
 
 ⚠ Without `--ignore-missing`, each archive you did not download is reported
@@ -105,8 +105,8 @@ grep aarch64-unknown-linux-musl SHA256SUMS | sha256sum -c
 Then unpack it and put the binary on your `PATH`:
 
 ```sh
-tar xzf moleculo-2.13.0-<platform>.tar.gz
-cd moleculo-2.13.0-<platform>
+tar xzf moleculo-2.14.0-<platform>.tar.gz
+cd moleculo-2.14.0-<platform>
 ./moleculo --version
 ```
 
@@ -830,9 +830,9 @@ what you would download.
 ```dockerfile
 # The published release binary, checked against the checksums pinned below.
 FROM alpine:3.20 AS fetch
-ARG VERSION=2.13.0
-ARG SHA256_AMD64=575a5c4975defb06fa889a7337c739755fb0e0905b1f6008b6614f5b80cb8ee3
-ARG SHA256_ARM64=14055315d2ab13715941c03cfb1c86ce05a62100affe15bc799716d712d21d63
+ARG VERSION=2.14.0
+ARG SHA256_AMD64=f653825706e592a82dbb5e68de75098f08b63899373e890db2828c4c8a435de9
+ARG SHA256_ARM64=6e2fc5e04790ac10bc5cc00112e042f88460cd798bf243dd761a26054dcdb997
 ARG TARGETARCH
 RUN case "$TARGETARCH" in \
       amd64) TARGET=x86_64-unknown-linux-musl  SUM=$SHA256_AMD64 ;; \
@@ -867,10 +867,10 @@ the legacy builder leaves it empty, so the build stops at `no moleculo build
 for` without saying why.
 
 ```sh
-docker build -t moleculo:2.13.0 .
+docker build -t moleculo:2.14.0 .
 docker run --rm -p 127.0.0.1:8080:8080 \
   -v /srv/indexes:/databases:ro \
-  moleculo:2.13.0
+  moleculo:2.14.0
 ```
 
 It builds for the machine you build on; `--platform linux/amd64` or
@@ -879,8 +879,8 @@ another version, change `VERSION` and both sums together, from that release's
 `SHA256SUMS`: a sum left behind fails the build at `sha256sum -c`, which is the
 point of pinning it.
 
-Run as written, on an arm64 Mac with Docker Desktop, for 2.13.0: the build
-printed `moleculo-2.13.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
+Run as written, on an arm64 Mac with Docker Desktop, for 2.14.0: the build
+printed `moleculo-2.14.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
 `linux/amd64` build the same for the x86-64 archive. The arm64 image, a
 3 008-molecule index mounted and `--network none`, read *healthy* within
 6 seconds and `docker stop -t 40` ended it with exit code 0. Measured on
@@ -1800,7 +1800,7 @@ longer liveness timeout:
 ```yaml
 containers:
   - name: moleculo
-    image: moleculo:2.13.0         # built from the Dockerfile above, in your registry
+    image: moleculo:2.14.0         # built from the Dockerfile above, in your registry
     ports: [{ containerPort: 8080 }]
     startupProbe:
       httpGet: { path: /healthz, port: 8080 }
@@ -1977,8 +1977,13 @@ said under the editor; RDKit would take one neighbour's word there. **From
 2.12.0 it works on several atoms at once**: the select tool drags a box or
 takes atoms one by one (shift adds), a drag on the selection moves all of it,
 Delete removes it, Ctrl+C and Ctrl+V copy and paste it with its wedges and
-crossed bonds, Ctrl+A takes everything and Escape lets go. ⚠ A fragment moved
-or pasted onto atoms already drawn is not joined to them. **From 2.13.0 it
+crossed bonds, Ctrl+A takes everything and Escape lets go. **From 2.14.0 a
+carried fragment joins what it is dropped on** — each of its atoms let go on
+an atom is folded into it, and the atoms it will join are marked while it is
+carried — **and copy and paste go through the system clipboard**: a copy is
+the selection's SMILES to anything else, and a SMILES copied anywhere pastes
+in as a drawing. ⚠ A paste joins nothing by itself: what was pasted stays
+selected, to be carried where it belongs. **From 2.13.0 it
 draws query features**: the query tool opens a panel on an atom — any atom,
 one of a list of elements, none of a list, a hydrogen count, a connection
 count, in a ring or in none, aromatic or aliphatic — and a click on a bond
