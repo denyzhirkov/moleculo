@@ -1,5 +1,189 @@
 # Changelog
 
+## 2.12.0 — 2026-11-19
+
+No search answer moved and nothing needs rebuilding.
+
+### Added
+
+- **The built-in structure editor works on several atoms at once.** A new
+  tool, *select*: drag a box, or click atoms and bonds one by one — shift adds
+  to what is selected and takes away from it. A drag that starts on the
+  selection moves all of it; Delete removes it; Ctrl+C, Ctrl+X and Ctrl+V
+  copy, cut and paste it, wedges and crossed bonds included, under the
+  pointer; Ctrl+A selects everything and Escape lets go. A copy made in one
+  editor on a page pastes into another. Selecting is not an edit: it changes
+  no SMILES and adds nothing to undo.
+
+### Still true
+
+- ⚠ **A fragment moved or pasted onto atoms already drawn is not joined to
+  them** — two atoms sit on one another until one is moved. Dragging a single
+  atom with the move tool still merges, as before.
+- ⚠ The copy is the editor's own: it does not reach the system clipboard, so
+  it does not paste into another page or another program.
+- ⚠ Checked in headless Chrome only, with a mouse; touch and other browsers
+  are as unchecked as they were.
+- Everything 2.11.1 listed.
+
+## 2.11.1 — 2026-11-18
+
+No answer moved and nothing needs rebuilding.
+
+### Fixed
+
+- **A SMILES query with a hundred rings or more is a query.** A structure
+  search writes your SMILES out and reads it back as a pattern, and the two
+  did not agree on how a ring bond past the 99th is numbered: the writer said
+  `%(100)`, the pattern reader took only `%nn`, and a valid query — 120
+  cyclohexyl rings in a chain — came back `400`, *input ended unexpectedly*.
+  The pattern reader now takes `%(n)`, in a SMARTS you write as well; RDKit
+  reads it there too.
+
+### Still true
+
+- ⚠ **A SMILES we write still numbers every ring bond anew**, so a molecule
+  of a hundred rings is written with `%(100)` where another writer would
+  reuse `1`. We read that form, and so does RDKit; a strict OpenSMILES reader
+  does not. It shows in `identity`'s `parent` and in the tautomer report.
+- ⚠ A SMILES query is still held to 512 aromatic atoms and 4 096 atoms, so
+  eighty-six benzene rings in one query are refused by that limit, by name.
+- Everything 2.11.0 listed.
+
+## 2.11.0 — 2026-11-18
+
+Nothing needs rebuilding: identity keys are computed when you ask, not stored.
+⚠ **An `identity` answer can move, for a SMILES that carries a chiral mark on
+an atom that is no stereocentre** — in ChEMBL as published there is no such
+row.
+
+### Answers moved
+
+- **A chiral mark on an atom that is certainly no stereocentre no longer
+  makes another compound.** `C[P@@]1c2ccccc2-c2ccccc21` — a phosphole whose
+  phosphorus sits between two identical arms — keyed apart from the same
+  molecule written without the mark, and from its own `@` spelling, so
+  `identity` answered *not held* for a compound you held. The mark is now left
+  out of the identity key and of the canonical SMILES, and the built-in
+  editor refuses a wedge drawn on such an atom, saying why.
+  ⚠ **The rule is narrower than RDKit's, on purpose.** *Two substituents the
+  graph cannot tell apart* is not enough to call a mark redundant: the ring
+  carbons of a cis-1,4-disubstituted cyclohexane are exactly that, and their
+  marks state cis — 77 436 marked atoms in 40 736 ChEMBL molecules. A mark is
+  dropped only where nothing else could tell the two apart: two or more
+  hydrogens on the atom; two like branches hanging off it that carry no
+  stereo mark of their own (two methyls, the oxygens of a sulfone); or a ring
+  atom with exactly two like neighbours, in a fragment that holds no other
+  stereo mark at all. ⚠ *Exactly two*, because a spiro atom between two like
+  rings has two like pairs and is a real centre — (R)- and (S)-SPINOL differ
+  there and nowhere else. RDKit 2026.03.5 drops that mark; we keep it.
+  Measured against RDKit's reading, on SMILES with unvetted marks spliced in
+  (ChEMBL as published cannot show this — RDKit wrote it and dropped them):
+  one stray mark per molecule, 20 000 molecules, 25 of them unread by RDKit
+  → 9 717 of the 9 802 marks RDKit drops, and none of the 10 173 it keeps; a
+  mark on every atom that could carry one, 20 000 molecules → 14 846 of the
+  17 786 RDKit drops, and **none of the 31 600 it keeps**. The string as
+  written keys as RDKit's reading of it on 17 626 of those 20 000, where it
+  was 7 153. Over ChEMBL as published, 3 187 207 marked atoms: none dropped, and
+  all 2 897 800 identity keys are unchanged.
+
+### Still true
+
+- ⚠ **A ring atom with two like ring neighbours keeps its mark whenever the
+  fragment holds any other stereo mark**, redundant or not, and a ring atom
+  with more than one like pair keeps it always: the 2 940 of 17 786 above.
+  Such a SMILES still keys apart from the one without the mark.
+- ⚠ **Only identity and the canonical SMILES leave the mark out.** A SMILES
+  is still read with it, `fmt=sdf` still draws a wedge for it, and a search
+  under `G` still holds a target to it.
+- Everything 2.10.0 listed.
+
+## 2.10.0 — 2026-11-18
+
+No search answer moved, no identity key moved, and nothing needs rebuilding.
+
+### Added
+
+- **The built-in structure editor reads cis and trans from the drawing.** A
+  double bond states its geometry by where its neighbours are drawn, and the
+  SMILES in the query field now carries the `/` and `\` for it; a SMILES with
+  marks read into the editor is drawn as that isomer and writes back as it,
+  where 2.8.0 named the marks as left out. ⚠ **A plain double bond in a
+  drawing is therefore always one isomer or the other.** A new tool, *either*,
+  marks a double bond as stating neither — it is drawn crossed, as a molfile's
+  bond stereo 3 is — and a SMILES that leaves a geometry unstated arrives with
+  that bond already crossed, so `CC=CC` in is `CC=CC` out. A search ignores a
+  query's double-bond geometry unless `G` asks for it, so nothing you searched
+  for by drawing finds anything different.
+  Only a bond with a cis and a trans to tell apart is read — RDKit's rule,
+  the one `fmt=sdf` already crosses bonds by: not in a ring of seven atoms or
+  fewer, and each end with two substituents the graph can tell apart.
+  Measured against RDKit reading its own drawings: 20 000 ChEMBL molecules
+  with a marked double bond → 19 948 the same molecule, 52 with something left
+  unstated, **none wrong**; our own layout of the same selection → 19 882 /
+  118 / 0; 343 world-drugs molecules → 343 either way. Through the editor's
+  own model, in page coordinates: 3 185 of 3 185.
+- **`write_canonical` — the SMILES the editor shows as canonical, and the
+  form strings of the tautomer report — is one string per molecule where a
+  double bond is marked.** It wrote the marks as they were stored, and which
+  slash is written, and on which neighbour, is notation: `C/C=C/Cl` and
+  `C\C=C\Cl` came out as two strings. Two random spellings of 20 000 ChEMBL
+  molecules with a marked double bond gave two different strings on 10 071;
+  now on none. ⚠ The identity key never had this defect — it is built on cis
+  and trans — and it did not move on those 20 000; RDKit reads each of the
+  20 000 new strings as the molecule it was written from. What changes is
+  which slashes a form in the tautomer report is printed with, not which form
+  it is. ⚠ Marks that contradict each other at one atom (`F/C(\Cl)=C/F`) are
+  written as they were stored, not tidied into an isomer.
+
+### Still true
+
+- ⚠ **A drawing that does not say is written as not saying.** A neighbour
+  drawn in line with the double bond (within 2.9°, where RDKit stops reading
+  too), or both neighbours of one end on the same side, gives no geometry and
+  a line under the editor. RDKit takes one neighbour's word in the second
+  case; we refuse it.
+- ⚠ **An *either* bond between two drawn ones, on a chain with nothing else
+  to carry a mark, cannot be written at all** — no SMILES says *trans,
+  unstated, trans* along `C=C–C=C–C=C` — and then all three are left unstated
+  and the editor says so, rather than the middle one stated by accident.
+- ⚠ A double bond whose two ends differ only in the stereochemistry further
+  along — one exocyclic to a bridged ring — is not read: 11 of the 20 000.
+- ⚠ Our own layout draws some macrocycle double bonds with both neighbours on
+  one side: 101 of 20 000 ChEMBL molecules read into the editor lose a
+  geometry that way, and the editor names it when it happens.
+- Everything 2.9.0 listed.
+
+## 2.9.0 — 2026-11-18
+
+Nothing needs rebuilding. ⚠ **An answer can move, for a query that holds
+`$()` on a row its recursive search could not finish** — on what we measured,
+none did.
+
+### Answers moved
+
+- **A search that runs out of steps inside `$()` makes the row `undecided`; it
+  used to answer *no*.** A recursive pattern was searched on a step budget of
+  its own, 100 000 steps, whatever the search around it had. One that ran out
+  was read as *does not match*: the row left the answer and was counted
+  nowhere, under `!$()` it **entered** the answer, and a caller with no budget
+  at all got the same. From 2.9.0 a row has one count of steps, spent by the
+  search and by every `$()` it asks at every level, and a row that runs out —
+  wherever — is `undecided`, counted and named as such. Nested `$()` no longer
+  multiplies the work a row may cost.
+  Measured with both builds: 31 queries holding `$()` (5 of our corpus's, 12
+  PAINS patterns, 6 of RDKit's tautomer transforms, 8 written to nest two
+  levels) over 499 973 PubChem and 300 000 ChEMBL molecules — every hit set
+  identical, no row undecided; and the identity key of all 2 897 800 ChEMBL
+  molecules is unchanged, so no index is stale. ⚠ That is a statement about
+  those populations. The row that does move is written for the purpose: a
+  path through a ten-atom clique, which 2.8.0 reports as absent — and as
+  present under `!` — and 2.9.0 finds, or calls undecided on a smaller budget.
+
+### Still true
+
+Everything 2.8.0 listed. `$()` still nests two levels and no more.
+
 ## 2.8.0 — 2026-11-18
 
 No search answer moved and nothing needs rebuilding beyond what 2.7.0 asks.

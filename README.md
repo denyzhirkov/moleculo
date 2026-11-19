@@ -61,8 +61,8 @@ it.
 
 ## Install
 
-**This README describes 2.8.0.** Download it from
-[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.8.0):
+**This README describes 2.12.0.** Download it from
+[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.12.0):
 the archive for your platform and `SHA256SUMS`, into one folder.
 
 ⚠ **Keep 1.1.0 away from a 2.0 index.** 1.1.0 reads index format 3 and has no
@@ -90,7 +90,7 @@ sha256sum -c --ignore-missing SHA256SUMS            # Linux, GNU coreutils
 ```
 
 ```
-./moleculo-2.8.0-aarch64-apple-darwin.tar.gz: OK
+./moleculo-2.12.0-aarch64-apple-darwin.tar.gz: OK
 ```
 
 ⚠ Without `--ignore-missing`, each archive you did not download is reported
@@ -105,8 +105,8 @@ grep aarch64-unknown-linux-musl SHA256SUMS | sha256sum -c
 Then unpack it and put the binary on your `PATH`:
 
 ```sh
-tar xzf moleculo-2.8.0-<platform>.tar.gz
-cd moleculo-2.8.0-<platform>
+tar xzf moleculo-2.12.0-<platform>.tar.gz
+cd moleculo-2.12.0-<platform>
 ./moleculo --version
 ```
 
@@ -830,9 +830,9 @@ what you would download.
 ```dockerfile
 # The published release binary, checked against the checksums pinned below.
 FROM alpine:3.20 AS fetch
-ARG VERSION=2.8.0
-ARG SHA256_AMD64=cf6706487dc75f5d192b22ee02f903f0b5b462622e6d053385bd38ee870e65e9
-ARG SHA256_ARM64=e24958012a7097dd8e8787c767caca946a753e9702236d34160b949a69164744
+ARG VERSION=2.12.0
+ARG SHA256_AMD64=a73e957953dc4788390f353a7f878c6e38df3fb9bf0f29d7ed32b861623343d9
+ARG SHA256_ARM64=f3f97de628cf3390e97964b4058fe7aba9c27953e048792b465e9d2e071e056a
 ARG TARGETARCH
 RUN case "$TARGETARCH" in \
       amd64) TARGET=x86_64-unknown-linux-musl  SUM=$SHA256_AMD64 ;; \
@@ -867,10 +867,10 @@ the legacy builder leaves it empty, so the build stops at `no moleculo build
 for` without saying why.
 
 ```sh
-docker build -t moleculo:2.8.0 .
+docker build -t moleculo:2.12.0 .
 docker run --rm -p 127.0.0.1:8080:8080 \
   -v /srv/indexes:/databases:ro \
-  moleculo:2.8.0
+  moleculo:2.12.0
 ```
 
 It builds for the machine you build on; `--platform linux/amd64` or
@@ -879,8 +879,8 @@ another version, change `VERSION` and both sums together, from that release's
 `SHA256SUMS`: a sum left behind fails the build at `sha256sum -c`, which is the
 point of pinning it.
 
-Run as written, on an arm64 Mac with Docker Desktop, for 2.8.0: the build
-printed `moleculo-2.8.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
+Run as written, on an arm64 Mac with Docker Desktop, for 2.12.0: the build
+printed `moleculo-2.12.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
 `linux/amd64` build the same for the x86-64 archive. The arm64 image, a
 3 008-molecule index mounted and `--network none`, read *healthy* within
 6 seconds and `docker stop -t 40` ended it with exit code 0. Measured on
@@ -1020,7 +1020,7 @@ searched:
 | **4 096 atoms** | SMILES and SMARTS | ring perception and fragment ordering grow with the square of the size, before any deadline is read |
 | **512 aromatic atoms**, counted as written and again after aromaticity is perceived | SMILES | finding a Kekulé form recurses once per pair of aromatic atoms |
 | **256 levels** of nesting in one SMARTS expression (`;`, `,`, `&`, `!` and juxtaposition) | SMARTS | every walk over a query recurses once per level |
-| **two levels of `$()`**: `$($(C))` is read, `$($($(C)))` is not | SMARTS | each level multiplies the work of the levels below it |
+| **two levels of `$()`**: `$($(C))` is read, `$($($(C)))` is not | SMARTS | until 2.9.0 each level multiplied the work of the levels below it; from 2.9.0 a row costs one budget however deep the query nests, and the limit stands because each level is still a search on the stack |
 | **128 atoms** inside all of a query's `$()` together | SMARTS | a recursive search runs on the stack of the search that asked for it |
 | **10⁸ units of work** to perceive its rings and aromaticity (from 2.1.1) | SMILES | the five above bound a query's size, and some heavily fused ring systems inside them still took seconds to tens of seconds to read |
 
@@ -1104,6 +1104,14 @@ counted, not timed, so the same query gives the same answer on any machine and
 under any load. A floor with no `warning` ran out of time, and a longer
 `--max-seconds` can change it. A `warning` names something that no amount of
 time will change.
+
+A chiral mark on an atom that is certainly no stereocentre — two methyls on
+it, or a ring atom with two like neighbours and nothing else marked in the
+molecule — is not part of
+the compound (from 2.11.0): `C[C@H](C)O` and `CC(C)O` are one key. ⚠ The rule
+is narrower than RDKit's: a ring atom with two like ring neighbours keeps its
+mark whenever the molecule holds any other stereo mark, because that is also
+what a cis or trans ring centre looks like.
 
 ⚠ **It answers and never acts** — nothing is deduplicated, merged or deleted.
 See [Known limitations](#known-limitations) for the two things to know before
@@ -1792,7 +1800,7 @@ longer liveness timeout:
 ```yaml
 containers:
   - name: moleculo
-    image: moleculo:2.8.0         # built from the Dockerfile above, in your registry
+    image: moleculo:2.12.0         # built from the Dockerfile above, in your registry
     ports: [{ containerPort: 8080 }]
     startupProbe:
       httpGet: { path: /healthz, port: 8080 }
@@ -1951,9 +1959,27 @@ molecules drawn and wedged by RDKit, 19 894 read as the same molecule, 106
 with a centre left unstated, and none as a wrong one. ⚠ A wedge that cannot
 state a centre — on an atom with no fourth substituent, or on a centre whose
 other bonds run straight through it — is said under the editor and left out of
-the SMILES, never guessed. ⚠ It is still narrower than JSME: **double-bond
-geometry is not read from a drawing** (a `/` or `\` in a SMILES read in is
-named as left out), and it draws no isotopes and no query features, and holds
+the SMILES, never guessed. **From 2.10.0 it reads cis and trans**: a double
+bond states its geometry by where its neighbours are drawn, as it does in a
+molfile, and the SMILES in the field carries the `/` and `\` for it; a SMILES
+with marks read in is drawn as that isomer and writes back as it. ⚠ **So a
+plain double bond in a drawing is always one isomer or the other.** To leave
+the geometry unstated, click the bond with the *either* tool — it is drawn
+crossed — and a SMILES that states none (`CC=CC`) arrives already crossed.
+Only bonds with a cis and a trans to tell apart are read: not one in a ring of
+seven atoms or fewer, nor one with two like substituents on an end. Checked the
+same way as the wedges: of 20 000 ChEMBL molecules with a marked double bond,
+drawn by RDKit, 19 948 read as the molecule RDKit reads from its own drawing,
+52 with something left unstated (36 of them a wedge, as above), and none as a
+wrong one. ⚠ A double bond whose neighbour is drawn in line with it, or with
+both neighbours of one end on the same side, is written with no geometry and
+said under the editor; RDKit would take one neighbour's word there. **From
+2.12.0 it works on several atoms at once**: the select tool drags a box or
+takes atoms one by one (shift adds), a drag on the selection moves all of it,
+Delete removes it, Ctrl+C and Ctrl+V copy and paste it with its wedges and
+crossed bonds, Ctrl+A takes everything and Escape lets go. ⚠ A fragment moved
+or pasted onto atoms already drawn is not joined to them. ⚠ It is
+still narrower than JSME: it draws no isotopes and no query features, and holds
 a drawing to 80 atoms. JSME is still what opens first.
 
 **A third editor, if you bring one.** Start the server with
@@ -2486,7 +2512,16 @@ Everything else on the list does something this does not.
   entry said "455 of 497 693" until 0.19.0; that was a sample nobody recorded
   and 150× out, and the seed fix in 0.15.0 had already taken the real figure
   from 59 to 30. Raising the budget is not offered as a fix, because it trades a
-  silent wrong answer for a slow one.
+  silent wrong answer for a slow one. ⚠ **Until 2.9.0 this was not true inside
+  `$()`.** A recursive pattern was searched on a budget of its own, and one
+  that ran out answered *no*: the row counted as a miss, or — under `!$()` —
+  as a hit, and `undecided` did not count it. From 2.9.0 a `$()` search spends
+  the row's one budget and a row that runs out anywhere is `undecided`. Over
+  31 queries holding `$()` — 5 of our corpus's, 12 PAINS patterns, 6 of RDKit's
+  tautomer transforms and 8 written to nest — on 499 973 PubChem and 300 000 ChEMBL
+  molecules, no answer moved and no row is undecided, and no identity key of
+  2 897 800 ChEMBL molecules changed; the row that shows the difference is a
+  ten-atom clique written for the purpose.
 - **Some structures we hand back as SMILES are read by other tools as a
   different molecule.** The `SMILES` column every result carries — in `json`,
   `tsv` and `csv` alike — is consumed by whatever you pipe it into, and over
