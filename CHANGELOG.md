@@ -1,5 +1,47 @@
 # Changelog
 
+## 2.18.0 — 2026-11-21
+
+No search answer moved and nothing needs rebuilding.
+
+### Added
+
+- **A SMARTS is read into the built-in structure editor.** *Read the field*
+  with the search type on SMARTS — or any text that is not a SMILES, such as
+  `*c1ccccc1` — now draws the query: atoms and bonds in the editor's own
+  vocabulary (any atom, one of a list, none of a list, hydrogen and
+  connection counts, in a ring or not, aromatic or not; any bond, ring bond).
+  Until now a SMARTS could be drawn and written but not opened again.
+- **What the editor has no word for is counted and named, not dropped**:
+  `$()`, `D`, `v`, `r`, `x`, `!@`, lists such as `-,=`, atom maps, and every
+  `@`, `/` and `\` — configuration is not read from a SMARTS yet. The drawing
+  is still made, and the note under the editor says what it leaves out.
+- **Checked, not assumed.** After translating, the editor writes the drawing
+  as it would for a search, reads that text back, and compares it with the
+  SMARTS atom by atom and bond by bond; only what compares equal is counted
+  as kept. Of the 162 queries this project is tested on (56 of its own, 94
+  PAINS patterns, 12 about hydrogens), 98 are read with nothing lost, 63 name
+  a loss and 1 is refused as no drawable structure. For all 98, the SMARTS
+  and what the editor writes back find the same molecules — by this engine
+  and by RDKit — on three collections of 22 423 molecules and on 57 956
+  ChEMBL molecules, where 72 of them have hits.
+- **A bond that is single or aromatic.** In a SMARTS a bond with no symbol
+  is either; the editor writes a drawn single bond beside a query atom as
+  `-`, so `[#6][#7]` read in would have come back as `[#6]-[#7]`. Such a bond
+  is kept as what it was, written `-,:`, drawn with a dotted line beside it,
+  and is one more step of the query tool on a single bond.
+
+### Still true
+
+- ⚠ **Configuration in a SMARTS is not drawn.** `C[C@H](N)O` and `C/C=C/C`
+  are read without their marks, and *stereo marks* is named.
+- ⚠ **The comparison is cautious.** A question spelled in a way its rules do
+  not reach is reported as lost though it may be the same; it never reports
+  a different question as kept.
+- ⚠ A SMARTS whose atoms cannot be a structure — a nitrogen with four bonds
+  and no charge said — is refused with the reason.
+- Everything 2.17.0 listed.
+
 ## 2.17.0 — 2026-11-19
 
 No search answer moved and nothing needs rebuilding.
