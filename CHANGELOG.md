@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.19.0 — 2026-11-21
+
+No search answer moved and nothing needs rebuilding.
+
+### Added
+
+- **What a SMARTS lost is marked on the drawing.** When a SMARTS read into
+  the built-in editor asks something the editor cannot draw, the note under
+  the canvas already said how many atoms and bonds it left out; now each of
+  them is marked where it sits — a dashed ring round the atom, a band under
+  the bond — until the drawing is changed.
+
+### Still true
+
+- ⚠ **Configuration in a SMARTS is not drawn**, and neither are atom maps:
+  both are named as lost, and neither has a place on the drawing to mark.
+
 ## 2.18.0 — 2026-11-21
 
 No search answer moved and nothing needs rebuilding.

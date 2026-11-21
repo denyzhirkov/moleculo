@@ -61,8 +61,8 @@ it.
 
 ## Install
 
-**This README describes 2.18.0.** Download it from
-[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.18.0):
+**This README describes 2.19.0.** Download it from
+[its release page](https://github.com/denyzhirkov/moleculo/releases/tag/v2.19.0):
 the archive for your platform and `SHA256SUMS`, into one folder.
 
 ⚠ **Keep 1.1.0 away from a 2.0 index.** 1.1.0 reads index format 3 and has no
@@ -90,7 +90,7 @@ sha256sum -c --ignore-missing SHA256SUMS            # Linux, GNU coreutils
 ```
 
 ```
-./moleculo-2.18.0-aarch64-apple-darwin.tar.gz: OK
+./moleculo-2.19.0-aarch64-apple-darwin.tar.gz: OK
 ```
 
 ⚠ Without `--ignore-missing`, each archive you did not download is reported
@@ -105,8 +105,8 @@ grep aarch64-unknown-linux-musl SHA256SUMS | sha256sum -c
 Then unpack it and put the binary on your `PATH`:
 
 ```sh
-tar xzf moleculo-2.18.0-<platform>.tar.gz
-cd moleculo-2.18.0-<platform>
+tar xzf moleculo-2.19.0-<platform>.tar.gz
+cd moleculo-2.19.0-<platform>
 ./moleculo --version
 ```
 
@@ -830,9 +830,9 @@ what you would download.
 ```dockerfile
 # The published release binary, checked against the checksums pinned below.
 FROM alpine:3.20 AS fetch
-ARG VERSION=2.18.0
-ARG SHA256_AMD64=253bf2811f14bd4a7ab859c36de964599cd7f2f988527aa9443a0553bd505756
-ARG SHA256_ARM64=ba130a5c93699de051aa3c80c11f4c80f28fea7b541adf89d4228f6cd3ea531e
+ARG VERSION=2.19.0
+ARG SHA256_AMD64=71f315b2e10b49aa8eb94d3f0dbf9af1b36f134b92ae06a3b5bc36f4dfc83b88
+ARG SHA256_ARM64=bae9f14ca8f9c0df41cc311c0ab0ce8f2cbb9d56ea308f4bcc2847673855ad50
 ARG TARGETARCH
 RUN case "$TARGETARCH" in \
       amd64) TARGET=x86_64-unknown-linux-musl  SUM=$SHA256_AMD64 ;; \
@@ -867,10 +867,10 @@ the legacy builder leaves it empty, so the build stops at `no moleculo build
 for` without saying why.
 
 ```sh
-docker build -t moleculo:2.18.0 .
+docker build -t moleculo:2.19.0 .
 docker run --rm -p 127.0.0.1:8080:8080 \
   -v /srv/indexes:/databases:ro \
-  moleculo:2.18.0
+  moleculo:2.19.0
 ```
 
 It builds for the machine you build on; `--platform linux/amd64` or
@@ -879,8 +879,8 @@ another version, change `VERSION` and both sums together, from that release's
 `SHA256SUMS`: a sum left behind fails the build at `sha256sum -c`, which is the
 point of pinning it.
 
-Run as written, on an arm64 Mac with Docker Desktop, for 2.18.0: the build
-printed `moleculo-2.18.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
+Run as written, on an arm64 Mac with Docker Desktop, for 2.19.0: the build
+printed `moleculo-2.19.0-aarch64-unknown-linux-musl.tar.gz: OK`, and the
 `linux/amd64` build the same for the x86-64 archive. The arm64 image, a
 3 008-molecule index mounted and `--network none`, read *healthy* within
 6 seconds and `docker stop -t 40` ended it with exit code 0. Measured on
@@ -1800,7 +1800,7 @@ longer liveness timeout:
 ```yaml
 containers:
   - name: moleculo
-    image: moleculo:2.18.0         # built from the Dockerfile above, in your registry
+    image: moleculo:2.19.0         # built from the Dockerfile above, in your registry
     ports: [{ containerPort: 8080 }]
     startupProbe:
       httpGet: { path: /healthz, port: 8080 }
@@ -2010,7 +2010,9 @@ counted and named instead of dropped. When nothing is named, what the editor
 writes back asks what the SMARTS asked: 98 of 162 committed queries read that
 way, and RDKit finds the same molecules for both on all of them. A bond with
 no symbol beside a query atom stays *single or aromatic* (`-,:`), drawn with
-a dotted line beside it. **From 2.16.0 it
+a dotted line beside it. **From 2.19.0 the atoms and bonds that lost a
+condition are marked on the drawing** — a dashed ring, a band under the bond
+— until the drawing changes. **From 2.16.0 it
 draws mass numbers and exact hydrogen counts**: the same panel sets an atom's
 mass number (`[13CH3]`) and a hydrogen count that stands whatever its bonds
 say (`[CH2]`, a radical), and a SMILES that carries either is read in with
